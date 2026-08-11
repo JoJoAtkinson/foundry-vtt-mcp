@@ -10,6 +10,8 @@ import { spawn, ChildProcess } from 'child_process';
 
 import { evaluateLockFile } from './lock.js';
 
+import { createForkRegistry } from './fork/index.js';
+
 import { config } from './config.js';
 
 import { Logger } from './logger.js';
@@ -1412,7 +1414,12 @@ async function startBackend(): Promise<void> {
     backendComfyUIHandlers: (globalThis as any).backendComfyUIHandlers,
   });
 
+  // fork: additive tool registry — see packages/mcp-server/src/fork/
+  const forkRegistry = createForkRegistry(foundryClient, logger);
+
   const allTools = [
+    ...forkRegistry.getToolDefinitions(),
+
     ...characterTools.getToolDefinitions(),
 
     ...compendiumTools.getToolDefinitions(),
@@ -1443,7 +1450,13 @@ async function startBackend(): Promise<void> {
     ...tokenManipulationTools.getToolDefinitions(),
 
     ...mapGenerationTools.getToolDefinitions(),
-  ];
+  ].filter(t => {
+    // fork: FOUNDRY_MCP_TOOL_FILTER deny-globs apply to upstream tools too —
+    // that is where most of the context saving comes from.
+    const denied = forkRegistry.isDenied((t as any).name);
+    if (denied) logger.info(`tool filtered out: ${(t as any).name}`);
+    return !denied;
+  });
 
   // Start Foundry connector (owns app port 31415)
 
@@ -1751,6 +1764,12 @@ async function startBackend(): Promise<void> {
                   break;
 
                 default:
+                  // fork: unknown names fall through to the additive registry,
+                  // so adding a tool never grows this switch.
+                  if (forkRegistry.has(name)) {
+                    result = await forkRegistry.dispatch(name, args);
+                    break;
+                  }
                   throw new Error(`Unknown tool: ${name}`);
               }
 

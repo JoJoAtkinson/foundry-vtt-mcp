@@ -4,6 +4,7 @@ import { QueryHandlers } from './queries.js';
 import { ModuleSettings } from './settings.js';
 import { CampaignHooks } from './campaign-hooks.js';
 import { ComfyUIManager } from './comfyui-manager.js';
+import { registerForkHandlers, unregisterForkHandlers } from './fork/handlers.js';
 // Connection control now handled through settings menu
 
 /**
@@ -46,6 +47,9 @@ class FoundryMCPBridge {
 
       // Register query handlers
       this.queryHandlers.registerHandlers();
+
+      // fork: additive query handlers (see src/fork/)
+      registerForkHandlers();
 
       // Register campaign hooks for interactive dashboards
       this.campaignHooks.register();
@@ -489,6 +493,7 @@ class FoundryMCPBridge {
 
     await this.stop();
     this.queryHandlers.unregisterHandlers();
+    unregisterForkHandlers();
     this.campaignHooks.unregister();
 
     console.log(`[${MODULE_ID}] Cleanup complete`);
