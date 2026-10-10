@@ -1,3 +1,37 @@
+## v0.8.3-pentaryn.1 (2026-10-10)
+
+Fork release (branch `pentaryn`) porting the D&D 5e paths to dnd5e 6.0.6.
+
+### dnd5e 6.x
+
+- `get-character` (dnd5e adapter) now returns `stats.movement` — `{ speeds, units, hover? }` read from `attributes.movement.speeds` (6.0), falling back to the flat pre-6 keys
+- Sanitized actor/item data no longer repeats speeds: when a movement object carries `speeds`, the enumerable legacy shim keys (`walk`, `burrow`, `climb`, `fly`, `jump`, `swim`) are skipped, as the 5.3 senses keys already were
+- Sanitized data keeps `Set` fields as arrays (item properties, damage types, and 6.0's `rarities`); they used to flatten to `{}`
+- `search-compendium` requests `system.rarities` / `system.rarity` in the pack index and puts the rarity word in each item result's summary, for any physical item type (multiple rarities join as `rare/veryRare`); `get-compendium-item` reports `properties.rarity` from `rarities`
+- Compendium creature speed summaries read `attributes.movement.speeds`
+- `dnd5e-create-npc` still writes the legacy `movement.*` / `senses.*` keys on purpose: dnd5e migrates them to `speeds` / `ranges` on create
+
+### prompt-markers, transport timeout, image passthrough (fork)
+
+- New fork tool `prompt-markers` (`action`: `list | gather | crops | replace | show`) fronting the pentaryn `pentaryn-prompts` module's `CONFIG.queries`; `npc` replacements are composed server-side through the `dnd5e-create-npc` / `dnd5e-add-feature` engines; only `replace` is action-logged
+- `FoundryConnector.query(method, data, { timeoutMs })` — per-query transport timeout (default 10 s, clamped 1-120 s); `eval-js` now waits its own `timeoutMs` + 2 s instead of being cut at 10 s
+- Fork tools may return `{ __mcpContent: [...] }` to pass MCP content blocks (images) through the backend (`fork/content.ts`)
+- Fork registry `write` may be a predicate over the call's arguments
+- Security: `foundry-mcp-bridge.fork.eval` rejects a `User#query` from a non-GM (`ctx.user`), not only a non-GM running client — players hold `QUERY_USER` by default
+
+### prompt-markers eval round 1 (fork)
+
+- `prompt-markers replace`: `with.kind: "character"` (level-N PC from the PHB, advanced by the module), `actor` + `patch` (stock monster plus changes), `npc` + `patch` and per-feature `recharge`, inline `{data}` / by-name hotspot items, replacement-level `ring` / `img` / `disposition`, `party` on gather and replace; the readback prints `markerDeleted=true|false`, character sheets, `DEFAULTED` choices, patches and per-encounter XP vs the party budget
+- `dnd5e-add-feature`: `recharge` (2-6) sets Recharge n-6 on the created feature (applied through the GM-guarded fork eval query)
+- Wrapper (`index.ts`): declares `tools.listChanged` and notifies the client when the backend's tool list changes (polled every 30 s), so a rebuilt backend's new tools reach sessions that started earlier
+
+### Fixes
+
+- `request-player-rolls`: a `save` roll used the ability's `save` object (formula `1d20+[object Object]`); it now uses `save.value`
+- `request-player-rolls`: `initiative` used `init.mod` (the ability modifier only); it now uses `init.total`
+
+---
+
 ## v0.8.3 (2026-06-11)
 
 ### New Features

@@ -252,6 +252,27 @@ export class DnD5eAdapter implements SystemAdapter {
       }
     }
 
+    // Movement. dnd5e 6.0 keys speeds under movement.speeds (walk, fly, swim, ... plus any
+    // custom type); earlier versions kept them flat on movement. Zero/empty speeds dropped.
+    const movement = system.attributes?.movement;
+    if (movement && typeof movement === 'object') {
+      const LEGACY_SPEED_KEYS = ['walk', 'burrow', 'climb', 'fly', 'jump', 'swim'];
+      const source: Record<string, unknown> =
+        movement.speeds && typeof movement.speeds === 'object'
+          ? movement.speeds
+          : Object.fromEntries(LEGACY_SPEED_KEYS.map(k => [k, movement[k]]));
+      const speeds: Record<string, number> = {};
+      for (const [key, value] of Object.entries(source)) {
+        const n = Number(value);
+        if (value !== null && value !== '' && Number.isFinite(n) && n > 0) speeds[key] = n;
+      }
+      stats.movement = {
+        speeds,
+        units: movement.units ?? 'ft',
+        ...(movement.hover ? { hover: true } : {}),
+      };
+    }
+
     // Skills
     if (system.skills) {
       stats.skills = {};

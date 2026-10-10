@@ -356,7 +356,11 @@ export class FoundryConnector {
     }
   }
 
-  async query(method: string, data?: any): Promise<any> {
+  async query(method: string, data?: any, opts?: { timeoutMs?: number }): Promise<any> {
+    // fork: per-query timeout. The flat 10 s silently capped every caller, including
+    // eval-js's advertised 60 s and the prompt-markers gather (crops take ~8 s).
+    const timeoutMs = Math.min(Math.max(opts?.timeoutMs ?? 10000, 1000), 120000);
+
     // Check connection based on active connection type
     const isConnected =
       this.activeConnectionType === 'webrtc'
@@ -378,8 +382,8 @@ export class FoundryConnector {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingQueries.delete(queryId);
-        reject(new Error(`Query timeout: ${method}`));
-      }, 10000); // 10 second timeout
+        reject(new Error(`Query timeout: ${method} (${timeoutMs} ms)`));
+      }, timeoutMs);
 
       this.pendingQueries.set(queryId, { resolve, reject, timeout });
 

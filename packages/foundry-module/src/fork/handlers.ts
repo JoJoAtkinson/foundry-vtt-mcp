@@ -14,9 +14,21 @@ const FORK_PREFIX = `${MODULE_ID}.fork`;
 declare const game: any;
 declare const CONFIG: any;
 
-function requireGM(): void {
+/**
+ * Two callers reach a CONFIG.queries handler:
+ *  - the MCP bridge (socket-bridge.ts) calls `handler(data)` with no context, from this
+ *    GM's own browser — so the running client's GM status is the check;
+ *  - Foundry's User#query calls `handler(data, {user, timeout})` on behalf of ANOTHER
+ *    user. Every player role holds QUERY_USER, so without the `ctx.user` check any
+ *    player could run arbitrary JS in the GM's browser via
+ *    `game.users.activeGM.query("foundry-mcp-bridge.fork.eval", {script})`.
+ */
+function requireGM(ctx?: { user?: { isGM?: boolean } }): void {
   if (!game.user?.isGM) {
     throw new Error('Access denied: fork tools require a GM session.');
+  }
+  if (ctx?.user && !ctx.user.isGM) {
+    throw new Error('Access denied: fork tools may only be queried by a GM.');
   }
 }
 
@@ -111,8 +123,11 @@ function safeToObject(doc: any): any {
  * so its LOG becomes the demand signal for which real tools to build next.
  * Every call is logged server-side regardless of logging configuration.
  */
-async function handleEval(data: { script: string; timeoutMs?: number }): Promise<any> {
-  requireGM();
+async function handleEval(
+  data: { script: string; timeoutMs?: number },
+  ctx?: { user?: { isGM?: boolean } }
+): Promise<any> {
+  requireGM(ctx);
 
   if (typeof data?.script !== 'string' || !data.script.trim()) {
     throw new Error('script is required and must be a non-empty string');

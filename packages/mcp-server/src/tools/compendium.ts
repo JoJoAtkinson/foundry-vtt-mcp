@@ -1066,11 +1066,15 @@ export class CompendiumTools {
         break;
       case 'equipment':
       case 'item':
-        if (system.rarity) parts.push(system.rarity);
         if (system.price?.value)
           parts.push(`${system.price.value} ${system.price.denomination || 'gp'}`);
         break;
     }
+
+    // Any physical item can be magic (weapon, consumable, loot, tool, container...), so the
+    // rarity word is not limited to equipment.
+    const rarity = this.dnd5eRarity(system);
+    if (rarity) parts.push(rarity);
 
     return parts.join(' • ');
   }
@@ -1313,7 +1317,8 @@ export class CompendiumTools {
 
     // Speed
     if (system.attributes?.movement) {
-      const movement = system.attributes.movement;
+      // dnd5e 6.0 moved walk/fly/swim/... under movement.speeds; older data keeps them flat.
+      const movement = system.attributes.movement.speeds ?? system.attributes.movement;
       const speeds: string[] = [];
       if (movement.walk) speeds.push(`${movement.walk} ft`);
       if (movement.fly) speeds.push(`fly ${movement.fly} ft`);
@@ -1324,12 +1329,31 @@ export class CompendiumTools {
     return stats;
   }
 
+  /**
+   * dnd5e 6.0 replaced the single `rarity` string with a `rarities` set. Only live documents
+   * keep a `rarity` getter (the lowest entry); compendium index entries are raw source data,
+   * so read `rarities` (an array in source, a Set on a live document) first.
+   */
+  private dnd5eRarity(system: any): string | undefined {
+    const rarities = system?.rarities;
+    // A Set crossing the socket as JSON arrives as {}; only trust real iterables.
+    const list =
+      Array.isArray(rarities) || rarities instanceof Set
+        ? [...(rarities as Iterable<string>)].filter(r => typeof r === 'string' && r)
+        : [];
+    if (list.length) return list.join('/');
+    return typeof system?.rarity === 'string' && system.rarity ? system.rarity : undefined;
+  }
+
   private extractItemProperties(item: any): any {
     const system = item.system || {};
     const properties: any = {};
 
     // Common properties across different item types
-    if (system.rarity) properties.rarity = system.rarity;
+    {
+      const rarity = this.dnd5eRarity(system);
+      if (rarity) properties.rarity = rarity;
+    }
     if (system.price) properties.price = system.price;
     if (system.weight) properties.weight = system.weight;
     if (system.quantity) properties.quantity = system.quantity;

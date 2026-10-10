@@ -181,6 +181,15 @@ export class DnD5eAddFeatureTool {
                 'HTML description of the feature (optional). Used by: passive, save, attack, attack-with-save, aura.',
               default: '',
             },
+            recharge: {
+              type: 'number',
+              minimum: 2,
+              maximum: 6,
+              description:
+                'Recharge n–6 (5 → "Recharge 5–6"): one use, regained on a d6 roll of n+ at the start of ' +
+                "the creature's turn; every activity of the feature consumes it. Used by: save, attack, " +
+                'attack-with-save, aura, passive. (fork)',
+            },
             activationType: {
               type: 'string',
               enum: ['action', 'bonus', 'reaction', 'legendary', 'lair', 'special'],
@@ -431,7 +440,7 @@ export class DnD5eAddFeatureTool {
   // ---------------------------------------------------------------------------
 
   async handleAddFeature(args: any): Promise<any> {
-    const { featureType } = z
+    const { featureType, recharge } = z
       .object({
         featureType: z.enum([
           'passive',
@@ -442,9 +451,59 @@ export class DnD5eAddFeatureTool {
           'spellcasting',
           'spells',
         ]),
+        recharge: z.number().int().min(2).max(6).optional(),
       })
       .parse(args);
 
+    const res = await this.dispatchFeature(featureType, args);
+    if (recharge && !['spellcasting', 'spells'].includes(featureType)) {
+      const note = await this.applyRecharge(args.actorIdentifier, args.featureName, recharge);
+      if (res && typeof res === 'object') {
+        res.recharge = note;
+        if (typeof res.message === 'string') res.message += `\n**Recharge:** ${note}`;
+      }
+    }
+    return res;
+  }
+
+  /**
+   * (fork) Recharge n–6 on the feature just created: `uses` {max 1, recovery recharge n} and an
+   * itemUses consumption target on every activity. Applied through the fork's GM-guarded eval
+   * query, so the module side of the bridge needs no rebuild.
+   */
+  private async applyRecharge(
+    actorIdentifier: string,
+    featureName: string,
+    n: number
+  ): Promise<string> {
+    const script = `
+      const ref = ${JSON.stringify(String(actorIdentifier ?? ''))}, name = ${JSON.stringify(String(featureName ?? ''))};
+      const actor = game.actors.get(ref) ?? game.actors.getName(ref) ?? game.actors.find(a => a.name.toLowerCase().includes(ref.toLowerCase()));
+      if (!actor) return { error: "actor not found" };
+      const item = actor.items.filter(i => i.name === name).pop();
+      if (!item) return { error: "feature not found" };
+      const row = { _id: item.id, "system.uses": { max: "1", spent: 0, recovery: [{ period: "recharge", formula: "${n}", type: "recoverAll" }] } };
+      for (const a of item.system.activities ?? []) {
+        const keep = (a.consumption?.targets ?? []).filter(t => t.type !== "itemUses").map(t => t.toObject?.() ?? t);
+        row["system.activities." + a.id + ".consumption.targets"] = [...keep, { type: "itemUses", target: "", value: "1" }];
+      }
+      await actor.updateEmbeddedDocuments("Item", [row]);
+      return { label: actor.items.get(item.id).system.uses.label };`;
+    try {
+      const r: any = await this.foundryClient.query('foundry-mcp-bridge.fork.eval', {
+        script,
+        timeoutMs: 8000,
+      });
+      const v = r?.result ?? r;
+      if (r?.ok === false || v?.error)
+        return `not applied (${v?.error ?? r?.error ?? 'eval failed'})`;
+      return v?.label ?? `Recharge ${n}–6`;
+    } catch (err: any) {
+      return `not applied (${err?.message ?? err})`;
+    }
+  }
+
+  private async dispatchFeature(featureType: string, args: any): Promise<any> {
     switch (featureType) {
       case 'passive':
         return this.handlePassive(args);

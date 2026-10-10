@@ -86,35 +86,52 @@ export function registerEvalJs(
       const args = ArgsSchema.parse(rawArgs);
       log.info(`eval: ${args.purpose}`);
 
-      const result = await foundryClient.query('foundry-mcp-bridge.fork.eval', {
-        script: args.script,
-        timeoutMs: args.timeoutMs,
-      });
+      const started = Date.now();
+      let result: any;
+      let thrown: unknown;
 
-      if (evalLogPath) {
-        try {
-          appendFileSync(
-            evalLogPath,
-            JSON.stringify({
-              ts: new Date().toISOString(),
-              purpose: args.purpose,
-              script: args.script, // full, never truncated — it IS the record
-              ok: result?.ok ?? false,
-              phase: result?.phase,
-              error: result?.error,
-              ms: result?.ms,
-            }) + '\n',
-            'utf8'
-          );
-        } catch (err) {
-          log.warn(`eval log write failed: ${err}`);
+      try {
+        result = await foundryClient.query(
+          'foundry-mcp-bridge.fork.eval',
+          { script: args.script, timeoutMs: args.timeoutMs },
+          // The transport must outlive the in-browser timeout, or a 30 s script is cut at
+          // the connector's default 10 s and logged as 'transport' instead of 'runtime'.
+          { timeoutMs: (args.timeoutMs ?? 10000) + 2000 }
+        );
+
+        return {
+          ...result,
+          summary: `eval (${args.purpose}) — ${result?.ok ? 'ok' : `failed at ${result?.phase}`}`,
+        };
+      } catch (err) {
+        thrown = err;
+        throw err;
+      } finally {
+        // `finally`, not the success path: a throw on the way to the bridge — module
+        // not connected, dead socket, timeout — used to leave no line at all, so the
+        // log read as "nothing was attempted" when the truth was "nothing got through".
+        // Those calls are phase 'transport', which is not a phase Foundry can report,
+        // so they stay distinguishable from a script that failed inside the world.
+        if (evalLogPath) {
+          try {
+            appendFileSync(
+              evalLogPath,
+              JSON.stringify({
+                ts: new Date().toISOString(),
+                purpose: args.purpose,
+                script: args.script, // full, never truncated — it IS the record
+                ok: thrown ? false : (result?.ok ?? false),
+                phase: thrown ? 'transport' : result?.phase,
+                error: thrown ? String((thrown as any)?.message ?? thrown) : result?.error,
+                ms: result?.ms ?? Date.now() - started,
+              }) + '\n',
+              'utf8'
+            );
+          } catch (err) {
+            log.warn(`eval log write failed: ${err}`);
+          }
         }
       }
-
-      return {
-        ...result,
-        summary: `eval (${args.purpose}) — ${result?.ok ? 'ok' : `failed at ${result?.phase}`}`,
-      };
     },
     { write: true }
   );

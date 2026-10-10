@@ -2766,7 +2766,11 @@ export class FoundryDataAccess {
         // and use the return value so we don't depend on pack.indexed state.
         let packIndex: any;
         try {
-          packIndex = await (pack as any).getIndex({ fields: ['name', 'img', 'type'] });
+          // system.rarities (dnd5e 6) / system.rarity (dnd5e < 6) let item results carry a
+          // rarity word; fields a document type lacks are simply absent from its entries.
+          packIndex = await (pack as any).getIndex({
+            fields: ['name', 'img', 'type', 'system.rarities', 'system.rarity'],
+          });
         } catch {
           // Fallback: older Foundry API without fields option
           packIndex = await (pack as any).getIndex();
@@ -2858,6 +2862,14 @@ export class FoundryDataAccess {
                 description: typedEntry.description || '',
                 hasImage: !!typedEntry.img,
                 summary: `${typedEntry.type} from ${pack.metadata.label}`,
+                ...(typedEntry.system?.rarities?.length || typedEntry.system?.rarity
+                  ? {
+                      system: {
+                        rarities: typedEntry.system.rarities,
+                        rarity: typedEntry.system.rarity,
+                      },
+                    }
+                  : {}),
               });
             }
           } catch (entryError) {
@@ -3857,6 +3869,12 @@ export class FoundryDataAccess {
         return obj.map(item => this.removeSensitiveFields(item, visited, depth + 1));
       }
 
+      // Sets (dnd5e SetFields: item properties, damage types, and since 6.0 the item's
+      // `rarities`) have no own keys, so the object walk below flattened them to {}.
+      if (obj instanceof Set) {
+        return Array.from(obj, item => this.removeSensitiveFields(item, visited, depth + 1));
+      }
+
       // Create a new sanitized object
       const sanitized: any = {};
 
@@ -3870,6 +3888,14 @@ export class FoundryDataAccess {
       const DEPRECATED_DND5E_SENSE_KEYS = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
       const isDnd5eSensesShape =
         keys.includes('ranges') && keys.some(k => DEPRECATED_DND5E_SENSE_KEYS.includes(k));
+
+      // dnd5e 6.0 moved movement.walk/burrow/climb/fly/jump/swim to movement.speeds.*.
+      // MovementField._shim re-adds the legacy keys as *enumerable* accessors, so a walk
+      // over the object would emit every speed twice (and the setters log a deprecation).
+      // Detect this shape and keep only movement.speeds.
+      const DEPRECATED_DND5E_MOVEMENT_KEYS = ['walk', 'burrow', 'climb', 'fly', 'jump', 'swim'];
+      const isDnd5eMovementShape =
+        keys.includes('speeds') && keys.some(k => DEPRECATED_DND5E_MOVEMENT_KEYS.includes(k));
 
       for (const key of keys) {
         // Skip sensitive and problematic fields entirely
@@ -3885,6 +3911,10 @@ export class FoundryDataAccess {
         }
 
         if (isDnd5eSensesShape && DEPRECATED_DND5E_SENSE_KEYS.includes(key)) {
+          continue;
+        }
+
+        if (isDnd5eMovementShape && DEPRECATED_DND5E_MOVEMENT_KEYS.includes(key)) {
           continue;
         }
 
@@ -5806,16 +5836,27 @@ export class FoundryDataAccess {
           baseFormula = `1d20+${skillMod}`;
           break;
 
-        case 'save':
-          // Use saving throw modifier from roll data
+        case 'save': {
+          // Use saving throw modifier from roll data. In dnd5e (4.x onward) `save` is an
+          // object ({ value, bonus, prof, ... }), not a number — the old read interpolated
+          // "[object Object]" into the formula.
+          const ability = rollData.abilities?.[rollTarget];
           const saveMod =
-            rollData.abilities?.[rollTarget]?.save ?? rollData.abilities?.[rollTarget]?.mod ?? 0;
+            (typeof ability?.save === 'number' ? ability.save : ability?.save?.value) ??
+            ability?.mod ??
+            0;
           baseFormula = `1d20+${saveMod}`;
           break;
+        }
 
         case 'initiative':
-          // Use initiative modifier from attributes or dex mod
-          const initMod = rollData.attributes?.init?.mod ?? rollData.abilities?.dex?.mod ?? 0;
+          // Use the full initiative modifier (init.total includes bonuses, proficiency and
+          // Alert); init.mod is only the ability modifier.
+          const initMod =
+            rollData.attributes?.init?.total ??
+            rollData.attributes?.init?.mod ??
+            rollData.abilities?.dex?.mod ??
+            0;
           baseFormula = `1d20+${initMod}`;
           break;
 
@@ -8268,6 +8309,10 @@ export class FoundryDataAccess {
               tempmax: 0,
               formula: data.hpFormula,
             },
+            // Legacy shapes, deliberately: dnd5e's migrateData moves movement.walk/... to
+            // movement.speeds.* (6.0, MovementField._migrate) and senses.darkvision/... to
+            // senses.ranges.* (5.3, SensesField._migrate) on create, so these land in the new
+            // shape. Port them to speeds/ranges if a future dnd5e drops those migrations.
             movement: {
               walk: data.walkSpeed,
               fly: data.flySpeed,

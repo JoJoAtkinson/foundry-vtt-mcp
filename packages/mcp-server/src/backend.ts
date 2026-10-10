@@ -11,6 +11,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { evaluateLockFile } from './lock.js';
 
 import { createForkRegistry } from './fork/index.js';
+import { toMcpPayload } from './fork/content.js';
 
 import { config } from './config.js';
 
@@ -1773,14 +1774,8 @@ async function startBackend(): Promise<void> {
                   throw new Error(`Unknown tool: ${name}`);
               }
 
-              const payload = {
-                content: [
-                  {
-                    type: 'text',
-                    text: typeof result === 'string' ? result : JSON.stringify(result),
-                  },
-                ],
-              };
+              // fork: `result.__mcpContent` passes content blocks (images) through.
+              const payload = toMcpPayload(result);
 
               socket.write(JSON.stringify({ id: msg.id, result: payload }) + '\n');
             } catch (e: any) {

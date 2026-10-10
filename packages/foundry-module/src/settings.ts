@@ -83,7 +83,7 @@ export class ModuleSettings {
 
         getData(): any {
           return {
-            autoStartService: game.settings.get(MODULE_ID, 'mapGenAutoStart') || true,
+            autoStartService: game.settings.get(MODULE_ID, 'mapGenAutoStart') ?? false,
             mapGenQuality: game.settings.get(MODULE_ID, 'mapGenQuality') || 'low',
             connectionStatus: this.getConnectionStatus(),
             connectionStatusText: this.getConnectionStatusText(),
@@ -292,7 +292,9 @@ export class ModuleSettings {
       scope: 'world',
       config: false, // Hidden from main config, accessible via submenu only
       type: Boolean,
-      default: true,
+      // Off by default: without a local ComfyUI install this only ever produces a
+      // "failed to start" warning two minutes after every world load.
+      default: false,
     });
 
     game.settings.register(this.moduleId, 'mapGenQuality', {

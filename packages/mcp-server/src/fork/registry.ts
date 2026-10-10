@@ -27,8 +27,11 @@ export type ForkToolHandler = (args: any) => Promise<any>;
 interface ForkToolEntry {
   definition: ForkToolDefinition;
   handler: ForkToolHandler;
-  /** Writes are logged and are subject to the table-mode guard; reads are not. */
-  write: boolean;
+  /**
+   * Writes are logged and are subject to the table-mode guard; reads are not. A predicate
+   * lets one fat tool (an `action` enum) log only its writing actions.
+   */
+  write: boolean | ((args: any) => boolean);
 }
 
 /** Truncate anything oversized so a 300-wall import logs its shape, not its coordinates. */
@@ -106,7 +109,7 @@ export class ForkRegistry {
   register(
     definition: ForkToolDefinition,
     handler: ForkToolHandler,
-    opts: { write: boolean }
+    opts: { write: boolean | ((args: any) => boolean) }
   ): void {
     if (this.tools.has(definition.name)) {
       throw new Error(`Fork tool registered twice: ${definition.name}`);
@@ -135,14 +138,20 @@ export class ForkRegistry {
       throw new Error(`Tool '${name}' is disabled by FOUNDRY_MCP_TOOL_FILTER`);
 
     const started = Date.now();
+    let isWrite = false;
+    try {
+      isWrite = typeof entry.write === 'function' ? !!entry.write(args) : entry.write;
+    } catch {
+      isWrite = true; // a predicate that cannot decide logs — the safe side
+    }
     try {
       const result = await entry.handler(args);
-      if (entry.write) this.log({ tool: name, args, ok: true, result, ms: Date.now() - started });
+      if (isWrite) this.log({ tool: name, args, ok: true, result, ms: Date.now() - started });
       return result;
     } catch (err: any) {
       // Failures are logged too — "why did nothing change on Tuesday" is exactly
       // the question a success-only log cannot answer.
-      if (entry.write) {
+      if (isWrite) {
         this.log({
           tool: name,
           args,

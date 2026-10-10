@@ -115,6 +115,7 @@ Once connected, ask Claude Desktop:
 
 - **43 MCP Tools** that allow Claude to interact with Foundry
 - **D&D 5e NPC Creation Suite**: Build complete NPCs from prompts — stat block, attacks, saves, auras, and spellcasting
+- **D&D 5e system 6.x**: reads the dnd5e 6.0 data shapes (`movement.speeds`, item `rarities`) and still accepts 5.x data; verified against dnd5e 6.0.6 on Foundry 14.369 (fork release `0.8.3-pentaryn.1`)
 - **Mongoose Traveller 2e (mgt2e) Support**: Full actor lifecycle — create/update/delete travellers, NPCs, creatures, and spacecraft with skill shorthand normalisation; creature compendium index with characteristic DMs; weapon-trait enum reference
 - **WFRP4e Support**: Character reading plus editing — update characteristics, wounds, skills and careers, and add or remove items on existing actors
 - **Generic Actor CRUD**: `manage-actors` creates, updates, and deletes actors of any type on any system; also updates and deletes embedded items
