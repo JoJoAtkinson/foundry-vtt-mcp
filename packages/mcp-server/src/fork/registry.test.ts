@@ -107,3 +107,31 @@ describe('action log (characterisation, mcp-fork-5)', () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 });
+
+describe('action log month (mcp-fork-6)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'reg-month-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+    vi.useFakeTimers({ toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env.PENTARYN_MCP_LOG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a backend running across a month boundary writes each line into its own month', async () => {
+    vi.setSystemTime(new Date('2026-10-31T23:59:00Z'));
+    const reg = new ForkRegistry(logger);
+    reg.register(DEF('t'), async () => 'ok', { write: true });
+    await reg.dispatch('t', {});
+    vi.setSystemTime(new Date('2026-11-01T00:01:00Z'));
+    await reg.dispatch('t', {});
+    const count = (f: string) =>
+      existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8').trim().split('\n').length : 0;
+    // Before mcp-fork-6 the month was fixed at startup: 2 and 0.
+    expect(count('mcp-2026-10.jsonl')).toBe(1);
+    expect(count('mcp-2026-11.jsonl')).toBe(1);
+  });
+});

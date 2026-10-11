@@ -6,6 +6,9 @@
  *     upstream write tools and the compact pentaryn-read lines);
  *   - 'eval'    → `eval.jsonl`: eval-js's full-script record.
  *
+ * The month in a file name is the month the line is written in (a long-lived backend
+ * crosses month boundaries), not the month the backend started.
+ *
  * A write failure never fails a tool call: it is warned once per stream and dropped.
  * Callers build the line object themselves, so key order is theirs.
  */
@@ -20,8 +23,6 @@ export class ActionLog {
   private readonly dir: string | null;
   private readonly logger: Logger;
   private readonly warned = new Set<LogStream>();
-  /** The month the 'actions' file is named for. */
-  private readonly month = new Date().toISOString().slice(0, 7); // YYYY-MM
 
   /** Read PENTARYN_MCP_LOG_DIR and create the directory; disabled when unset or uncreatable. */
   static fromEnv(logger: Logger, env: NodeJS.ProcessEnv = process.env): ActionLog {
@@ -51,9 +52,10 @@ export class ActionLog {
   }
 
   /** The file a line written now would go to (null when disabled). */
-  pathFor(stream: LogStream, _now: Date = new Date(), dir = this.dir): string | null {
+  pathFor(stream: LogStream, now: Date = new Date(), dir = this.dir): string | null {
     if (!dir) return null;
-    return stream === 'eval' ? join(dir, 'eval.jsonl') : join(dir, `mcp-${this.month}.jsonl`);
+    const month = now.toISOString().slice(0, 7); // YYYY-MM
+    return stream === 'eval' ? join(dir, 'eval.jsonl') : join(dir, `mcp-${month}.jsonl`);
   }
 
   /** Append one JSON line to a stream. Never throws. */
