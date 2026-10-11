@@ -12,6 +12,7 @@ import {
   QUERIES,
   TIMEOUTS,
   PROMPT_MARKERS_DEFINITION,
+  registerPromptMarkers,
 } from './prompt-markers.js';
 import { toMcpPayload } from '../content.js';
 import { ForkRegistry } from '../registry.js';
@@ -714,6 +715,55 @@ describe('registry logging', () => {
       action: 'replace',
       summary: 'did replace',
     });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a specFile replace logs the expanded spec and the path (mcp-fork-16)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pm-log16-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+    const file = join(dir, 'spec.json');
+    const none = (id: string) => ({ id, with: { kind: 'none', reason: 'cut' } });
+    writeFileSync(file, JSON.stringify({ call: 'pm-9', replacements: [none('p4')] }));
+    const answer = (d: any) => ({
+      dryRun: !!d.dryRun,
+      call: d.call,
+      text: `replace ${d.call} — dry run: 1 ok, 0 failed`,
+      results: [{ index: 0, id: 'p4', label: 'p4', kind: 'none', ok: true, created: [], ids: [] }],
+      remaining: {},
+      encounters: [],
+    });
+    const query = vi.fn(async (_m: string, d: any) => answer(d));
+    const reg = new ForkRegistry(logger);
+    registerPromptMarkers(reg, { query } as any, logger);
+    const args = { action: 'replace', specFile: file, dryRun: true };
+    const viaRegistry = await reg.dispatch('prompt-markers', args);
+    const direct = await createPromptMarkersHandler({ foundryClient: { query } as any, logger })(
+      args
+    );
+    expect(viaRegistry).toEqual(direct);
+    const month = new Date().toISOString().slice(0, 7);
+    const lines = readFileSync(join(dir, `mcp-${month}.jsonl`), 'utf8')
+      .trim()
+      .split('\n');
+    expect(lines).toHaveLength(1);
+    const line = JSON.parse(lines[0]);
+    expect(line.args.specFile).toBe(file);
+    expect(line.args.call).toBe('pm-9');
+    expect(line.args.replacements[0].id).toBe('p4');
+    expect(line.args.dryRun).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('an unreadable specFile is still logged with the raw args', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pm-log16b-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+    const reg = new ForkRegistry(logger);
+    registerPromptMarkers(reg, { query: vi.fn() } as any, logger);
+    const args = { action: 'replace', specFile: join(dir, 'missing.json'), dryRun: true };
+    await expect(reg.dispatch('prompt-markers', args)).rejects.toThrow(/BAD_SPEC/);
+    const month = new Date().toISOString().slice(0, 7);
+    const line = JSON.parse(readFileSync(join(dir, `mcp-${month}.jsonl`), 'utf8').trim());
+    expect(line).toMatchObject({ ok: false, args });
     rmSync(dir, { recursive: true, force: true });
   });
 });

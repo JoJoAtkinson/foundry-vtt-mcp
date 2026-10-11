@@ -899,6 +899,16 @@ export function registerPromptMarkers(
   registry.register(DEFINITION, createPromptMarkersHandler({ foundryClient, logger }), {
     // Only replace writes; a dry run is logged too, so the log shows the plan that preceded it.
     write: (args: any) => args?.action === 'replace',
+    // A specFile is edited and deleted after use (prompt-markers.md), so log what it held,
+    // not just its path. An unreadable file logs the raw args (the call fails anyway).
+    logArgs: (args: any) => {
+      try {
+        const expanded = withSpecFile(args);
+        return expanded === args ? args : { ...expanded, specFile: args.specFile };
+      } catch {
+        return args;
+      }
+    },
   });
 }
 
