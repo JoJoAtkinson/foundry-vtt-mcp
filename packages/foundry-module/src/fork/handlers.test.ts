@@ -87,6 +87,13 @@ describe('GM guard on bridge queries (mcp-fork-2)', () => {
     await expect(q()[EVAL]({ script: 'return 1' }, { user: { isGM: false } })).rejects.toThrow(
       /may only be queried by a GM/
     );
+    // mcp-fork-24: coded like the kit's errors
+    await expect(
+      q()[EVAL]({ script: 'return 1' }, { user: { isGM: false } })
+    ).rejects.toMatchObject({
+      code: 'NOT_GM',
+      message: 'NOT_GM: Access denied: fork tools may only be queried by a GM.',
+    });
     await expect(q()[EVAL]({ script: 'return 1' })).resolves.toMatchObject({ ok: true, result: 1 });
   });
 
@@ -94,6 +101,10 @@ describe('GM guard on bridge queries (mcp-fork-2)', () => {
     registerForkHandlers();
     (globalThis as any).game.user.isGM = false;
     await expect(q()[EVAL]({ script: 'return 1' })).rejects.toThrow(/require a GM session/);
+    await expect(q()[EVAL]({ script: 'return 1' })).rejects.toMatchObject({
+      code: 'NOT_GM',
+      message: expect.stringMatching(/^NOT_GM: /),
+    });
   });
 
   it('upstream bridge queries: no ctx and GM senders pass', async () => {
@@ -110,6 +121,9 @@ describe('GM guard on bridge queries (mcp-fork-2)', () => {
     await expect(q()['foundry-mcp-bridge.x']({ a: 1 }, { user: { isGM: false } })).rejects.toThrow(
       /Access denied/
     );
+    await expect(
+      q()['foundry-mcp-bridge.x']({ a: 1 }, { user: { isGM: false } })
+    ).rejects.toMatchObject({ code: 'NOT_GM', message: expect.stringMatching(/^NOT_GM: /) });
     expect(x).not.toHaveBeenCalled();
   });
 

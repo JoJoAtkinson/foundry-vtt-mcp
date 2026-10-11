@@ -27,9 +27,18 @@ declare const CONFIG: any;
  */
 function requireGM(ctx?: QueryContext): void {
   if (!game.user?.isGM) {
-    throw new Error('Access denied: fork tools require a GM session.');
+    throw notGM('fork tools require a GM session.');
   }
   assertSenderIsGM(ctx, 'fork tools');
+}
+
+/**
+ * The kit's coded-error form (pentaryn foundry/lib/errors.mjs): the `NOT_GM:` prefix is
+ * the wire format (a query error crosses the socket as its message only) and `code` is
+ * set for local callers. "Access denied" stays in the text for anyone matching on it.
+ */
+function notGM(detail: string): Error {
+  return Object.assign(new Error(`NOT_GM: Access denied: ${detail}`), { code: 'NOT_GM' });
 }
 
 type QueryContext = { user?: { isGM?: boolean } };
@@ -37,7 +46,7 @@ type QueryContext = { user?: { isGM?: boolean } };
 /** The sender half of the guard: a User#query from a non-GM is refused; no ctx passes. */
 function assertSenderIsGM(ctx: QueryContext | undefined, what: string): void {
   if (ctx?.user && !ctx.user.isGM) {
-    throw new Error(`Access denied: ${what} may only be queried by a GM.`);
+    throw notGM(`${what} may only be queried by a GM.`);
   }
 }
 
