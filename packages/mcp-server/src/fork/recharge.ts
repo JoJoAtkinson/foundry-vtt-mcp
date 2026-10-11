@@ -1,8 +1,9 @@
 /**
  * dnd5e-add-feature's `recharge` (mcp-fork-10), server side: one typed fork query,
  * `foundry-mcp-bridge.fork.applyRecharge` (packages/foundry-module/src/fork/handlers.ts),
- * which resolves the actor the way the creating tool did (token ids included), finds the
- * item by id, and writes the row from foundry-module's `rechargeUpdate`.
+ * which resolves the actor exactly (id, exact name, token id; then the created actor's id —
+ * never a substring), finds the item by id, and writes the row from foundry-module's
+ * `rechargeUpdate`.
  *
  * Kept out of add-feature.ts (an upstream file) so that file carries a 3-line call. The
  * outcome is written to the action log as its own line beside the add-feature call.
@@ -16,6 +17,11 @@ export const APPLY_RECHARGE_QUERY = 'foundry-mcp-bridge.fork.applyRecharge';
 
 export interface RechargeRequest {
   actorIdentifier: string;
+  /**
+   * The id of the actor the feature was created on (the tool's result). The module resolves
+   * the identifier exactly and falls back to this id, so a substring never picks the actor.
+   */
+  actorId?: string;
   /** The created feature's id when the tool knows it; else the last item named featureName. */
   itemId?: string;
   featureName: string;

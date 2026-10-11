@@ -80,6 +80,30 @@ describe('applyRecharge through the typed fork query (mcp-fork-10)', () => {
     expect(lines(dir).map(l => l.ok)).toEqual([false, false]);
   });
 
+  it("add-feature sends the created actor's and item's ids beside the identifier", async () => {
+    const query = vi.fn(async () => ({ ok: true, label: 'Recharge 5–6' }));
+    const tool = new DnD5eAddFeatureTool({ foundryClient: { query } as any, logger });
+    (tool as any).dispatchFeature = async () => ({
+      message: 'added',
+      item: { id: 'I1', name: 'Breath' },
+      actor: { id: 'O1', name: 'Ogre' },
+    });
+    const res = await tool.handleAddFeature({
+      featureType: 'passive',
+      actorIdentifier: 'Og',
+      featureName: 'Breath',
+      recharge: 5,
+    });
+    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.fork.applyRecharge', {
+      actorIdentifier: 'Og',
+      actorId: 'O1',
+      itemId: 'I1',
+      featureName: 'Breath',
+      n: 5,
+    });
+    expect(res.recharge).toBe('Recharge 5–6');
+  });
+
   it('add-feature no longer builds an eval script for recharge', () => {
     const tool = new DnD5eAddFeatureTool({ foundryClient: { query: vi.fn() } as any, logger });
     expect((tool as any).applyRecharge).toBeUndefined();

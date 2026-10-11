@@ -151,27 +151,58 @@ async function handleEval(
 }
 
 /**
+ * The actor a recharge goes to, resolved exactly — never a substring (an empty or partial
+ * identifier must not land on another actor): world actor id, then exact name, then a scene
+ * token id (an unlinked token's own synthetic actor). `actorId` is the id the creating tool
+ * reported: when the identifier does not resolve to an actor with that id (the creating
+ * tool matched a substring), the world actor with that id is the one it wrote to. A
+ * synthetic actor shares its base actor's id, so a token id keeps its synthetic actor.
+ */
+function findRechargeActor(identifier: string, actorId?: string): any {
+  let actor: any;
+  if (identifier) {
+    actor = game.actors?.get?.(identifier) ?? game.actors?.getName?.(identifier);
+    if (!actor) {
+      for (const scene of game.scenes ?? []) {
+        const token = scene.tokens?.get?.(identifier);
+        if (token?.actor) {
+          actor = token.actor;
+          break;
+        }
+      }
+    }
+  }
+  if (actorId && actor?.id !== actorId) actor = game.actors?.get?.(actorId);
+  return actor;
+}
+
+/**
  * Give a feature Recharge n–6 (dnd5e-add-feature's `recharge`, mcp-fork-10). The actor is
- * resolved exactly as the creating tool resolved it — upstream's findActorByIdentifier,
- * which also takes a scene token id (an unlinked token's synthetic actor) — and the item
- * by id when the tool knows it, else the last item with that name.
+ * resolved exactly (findRechargeActor), and the item by id when the tool knows it — an id
+ * that is not on that actor is "feature not found", never a same-named feature — else the
+ * last item with that name.
  */
 async function handleApplyRecharge(
-  data: { actorIdentifier?: string; itemId?: string; featureName?: string; n?: number },
+  data: {
+    actorIdentifier?: string;
+    actorId?: string;
+    itemId?: string;
+    featureName?: string;
+    n?: number;
+  },
   ctx?: QueryContext
 ): Promise<{ ok: boolean; error?: string; label?: string; actorId?: string; itemId?: string }> {
   requireGM(ctx);
   const n = Number(data?.n);
   if (!Number.isInteger(n) || n < 2 || n > 6) return { ok: false, error: 'n must be 2-6' };
-  const dataAccess = (window as any).foundryMCPBridge?.dataAccess;
-  if (typeof dataAccess?.findActorByIdentifier !== 'function') {
-    return { ok: false, error: 'bridge data access is not ready' };
-  }
-  const actor = dataAccess.findActorByIdentifier(String(data?.actorIdentifier ?? ''));
+  const actor = findRechargeActor(
+    String(data?.actorIdentifier ?? ''),
+    typeof data?.actorId === 'string' && data.actorId ? data.actorId : undefined
+  );
   if (!actor) return { ok: false, error: 'actor not found' };
-  const item =
-    (data?.itemId ? actor.items.get(data.itemId) : undefined) ??
-    actor.items.filter((i: any) => i.name === data?.featureName).pop();
+  const item = data?.itemId
+    ? actor.items.get(data.itemId)
+    : actor.items.filter((i: any) => i.name === data?.featureName).pop();
   if (!item) return { ok: false, error: 'feature not found' };
   await actor.updateEmbeddedDocuments('Item', [rechargeUpdate(item, n)]);
   return {

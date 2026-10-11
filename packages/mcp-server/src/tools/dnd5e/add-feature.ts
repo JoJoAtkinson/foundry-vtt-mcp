@@ -463,6 +463,7 @@ export class DnD5eAddFeatureTool {
         this.foundryClient,
         {
           actorIdentifier: args.actorIdentifier,
+          actorId: res?.actor?.id,
           itemId: res?.item?.id,
           featureName: args.featureName,
           n: recharge,

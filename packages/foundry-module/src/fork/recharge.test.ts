@@ -143,11 +143,53 @@ describe('foundry-mcp-bridge.fork.applyRecharge', () => {
       ok: false,
       error: 'n must be 2-6',
     });
+    expect(w.updates).toEqual([]);
+  });
+
+  it('no longer needs the bridge data access (was "bridge data access is not ready")', async () => {
     delete (globalThis as any).window.foundryMCPBridge.dataAccess;
-    expect((await q({ actorIdentifier: 'Ogre', featureName: 'Breath', n: 5 })).error).toBe(
-      'bridge data access is not ready'
+    expect((await q({ actorIdentifier: 'Ogre', featureName: 'Breath', n: 5 })).ok).toBe(true);
+  });
+
+  it('a substring or empty identifier resolves no actor (was: the first actor whose name contains it)', async () => {
+    for (const actorIdentifier of ['Og', 'ogre', '']) {
+      expect(await q({ actorIdentifier, featureName: 'Breath', n: 5 })).toEqual({
+        ok: false,
+        error: 'actor not found',
+      });
+    }
+    expect(w.updates).toEqual([]);
+  });
+
+  it('an itemId that is not on the actor is "feature not found", not a same-named feature', async () => {
+    expect(await q({ actorIdentifier: 'Ogre', itemId: 'I9', featureName: 'Breath', n: 5 })).toEqual(
+      { ok: false, error: 'feature not found' }
     );
     expect(w.updates).toEqual([]);
+  });
+
+  it("actorId (the creating tool's actor) decides when the identifier was a substring", async () => {
+    const res = await q({
+      actorIdentifier: 'Og',
+      actorId: 'O1',
+      itemId: 'I1',
+      featureName: 'Breath',
+      n: 5,
+    });
+    expect(res).toMatchObject({ ok: true, actorId: 'O1', itemId: 'I1' });
+    expect(w.updates).toEqual([{ actor: 'Ogre', rows: [EXPECTED_ROW] }]);
+  });
+
+  it("a token id with actorId keeps the token's synthetic actor (it shares the base id)", async () => {
+    const res = await q({
+      actorIdentifier: 'T1',
+      actorId: 'O1',
+      itemId: 'I1',
+      featureName: 'Breath',
+      n: 5,
+    });
+    expect(res.ok).toBe(true);
+    expect(w.updates).toEqual([{ actor: 'Ogre (token T1)', rows: [EXPECTED_ROW] }]);
   });
 
   it('is GM-guarded like eval', async () => {
