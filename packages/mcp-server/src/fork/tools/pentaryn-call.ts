@@ -9,7 +9,8 @@
  *
  * In the GM tab the template reads `game.pentaryn[ns].describe()` on every call (no
  * fork-side cache that can drift), finds the row, refuses a write row on the read tool and
- * a read row on the write tool, maps the call onto the row's parameters, runs it, and turns
+ * a read row on the write tool (a row runs as a read only when it says `writes: false`, and
+ * as a write only when it says `writes: true`), maps the call onto the row's parameters, runs it, and turns
  * a thrown coded error into a value. The module resolves `ref` (exact match, never a
  * substring); the fork passes it through unchanged.
  *
@@ -171,8 +172,13 @@ if (!row) {
   return fail('NOT_FOUND', where + ' is not a method of ' + call.ns,
     { paths: known.map(([p]) => p), writes: Object.fromEntries(known) });
 }
+// Fails closed both ways: a row must say writes:false to run as a read (a hand-built
+// describe() or a kit regression that drops the key must not reach a write unlogged).
 const writes = row.writes === true;
 if (call.mode === 'read' && writes) return fail('BAD_ARGS', where + ' is a write row; use pentaryn-write');
+if (call.mode === 'read' && row.writes !== false) {
+  return fail('BAD_ARGS', where + ' does not declare writes; use pentaryn-write or eval-js');
+}
 if (call.mode === 'write' && !writes) return fail('BAD_ARGS', where + ' is a read row; use pentaryn-read');
 
 const parts = call.path.split('.');

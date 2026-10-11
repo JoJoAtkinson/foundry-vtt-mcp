@@ -128,6 +128,28 @@ describe('pentaryn-call template', () => {
     expect(calls).toEqual([['bulk.import', { dryRun: true }]]);
   });
 
+  it('a row without a boolean `writes` runs through neither tool', async () => {
+    for (const writes of [undefined, 'yes', 1]) {
+      const row: Record<string, unknown> = {
+        path: 'odd.touch',
+        params: [],
+        gm: true,
+        doc: 'hand-built',
+      };
+      if (writes !== undefined) row.writes = writes;
+      reinstall(row);
+      const read = await run({ ns: 'fake', path: 'odd.touch' });
+      expect(read).toMatchObject({ ok: false, code: 'BAD_ARGS' });
+      expect(read.reason).toBe(
+        'fake.odd.touch does not declare writes; use pentaryn-write or eval-js'
+      );
+      const write = await run({ mode: 'write', ns: 'fake', path: 'odd.touch' });
+      expect(write).toMatchObject({ ok: false, code: 'BAD_ARGS' });
+      expect(write.reason).toMatch(/is a read row; use pentaryn-read/);
+    }
+    expect(calls).toEqual([]);
+  });
+
   it("a write row's own fail() is returned as a value with its code copied up", async () => {
     const env = await run({ mode: 'write', ns: 'fake', path: 'refuse' });
     expect(env).toEqual({

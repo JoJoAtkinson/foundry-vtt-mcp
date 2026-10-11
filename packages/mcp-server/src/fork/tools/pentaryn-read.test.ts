@@ -8,8 +8,10 @@ import { PENTARYN_READ_DEFINITION, registerPentarynRead } from './pentaryn-read.
 import {
   calls,
   evalClient,
+  fakeNamespace,
   installGame,
   useFakeEvalTimers,
+  withRow,
 } from './pentaryn-call.test.fixtures.js';
 
 const logger: any = {
@@ -94,6 +96,21 @@ describe('pentaryn-read', () => {
     expect(res).toMatchObject({ ok: false, code: 'BAD_ARGS' });
     expect(res.reason).toMatch(/use pentaryn-write/);
     expect(calls).toEqual([]);
+  });
+
+  it('a row missing `writes` is refused here, not run, and logged with BAD_ARGS', async () => {
+    unregisterForkHandlers();
+    installGame(
+      withRow(fakeNamespace(), { path: 'odd.touch', params: [], gm: true }, async () => {
+        calls.push(['odd.touch']);
+        return { ok: true };
+      })
+    );
+    const res: any = await reg.dispatch('pentaryn-read', { ns: 'fake', path: 'odd.touch' });
+    expect(res).toMatchObject({ ok: false, code: 'BAD_ARGS' });
+    expect(res.reason).toMatch(/does not declare writes/);
+    expect(calls).toEqual([]);
+    expect(lines(dir)[0]).toMatchObject({ tool: 'pentaryn-read', ok: false, code: 'BAD_ARGS' });
   });
 
   it('root describe and namespace NOT_FOUND', async () => {
