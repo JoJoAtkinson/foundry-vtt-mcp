@@ -20,6 +20,8 @@ import * as fs from 'fs';
 
 import * as path from 'path';
 
+import { watchToolList } from './fork/tool-list-watch.js';
+
 const CONTROL_HOST = '127.0.0.1';
 
 const CONTROL_PORT = 31414;
@@ -309,12 +311,17 @@ async function startWrapper() {
     { name: config.server.name, version: config.server.version },
     { capabilities: { tools: { listChanged: true } } }
   );
-  let servedTools: string | null = null;
-  const toolsKey = (tools: any[]) =>
-    (tools ?? [])
-      .map(t => `${t?.name}:${String(t?.description ?? '').length}`)
-      .sort()
-      .join('|');
+  // fork: poll the backend's tool list and send tools/list_changed (src/fork/tool-list-watch.ts).
+  const markServed = watchToolList(
+    mcp,
+    () => backend.send('list_tools', {}),
+    30_000,
+    msg => {
+      try {
+        (backend as any).log?.(msg);
+      } catch {}
+    }
+  );
 
   // Setup cleanup handlers - cross-platform approach
 
@@ -351,7 +358,7 @@ async function startWrapper() {
         });
       } catch {}
 
-      servedTools = toolsKey(res.tools || []);
+      markServed(res.tools || []);
       return { tools: res.tools || [] };
     } catch (e) {
       // Log but return empty to remain MCP-compliant
@@ -387,26 +394,6 @@ async function startWrapper() {
   const transport = new StdioServerTransport();
 
   await mcp.connect(transport);
-
-  // Poll the backend's tool list (a local socket round trip) and tell the client when it changes,
-  // so a respawned backend from a rebuilt dist/ shows its new tools without a session restart.
-  const poll = setInterval(async () => {
-    if (servedTools === null) return;
-    try {
-      const res = await backend.send('list_tools', {});
-      const key = toolsKey(res?.tools || []);
-      if (key && key !== servedTools) {
-        servedTools = key;
-        await mcp.sendToolListChanged();
-        try {
-          (backend as any).log?.('tools/list changed; notified the client');
-        } catch {}
-      }
-    } catch {
-      /* backend restarting: try again next tick */
-    }
-  }, 30_000);
-  poll.unref?.();
 }
 
 startWrapper().catch(err => {
