@@ -25,12 +25,40 @@ declare const CONFIG: any;
  *    player could run arbitrary JS in the GM's browser via
  *    `game.users.activeGM.query("foundry-mcp-bridge.fork.eval", {script})`.
  */
-function requireGM(ctx?: { user?: { isGM?: boolean } }): void {
+function requireGM(ctx?: QueryContext): void {
   if (!game.user?.isGM) {
     throw new Error('Access denied: fork tools require a GM session.');
   }
+  assertSenderIsGM(ctx, 'fork tools');
+}
+
+type QueryContext = { user?: { isGM?: boolean } };
+
+/** The sender half of the guard: a User#query from a non-GM is refused; no ctx passes. */
+function assertSenderIsGM(ctx: QueryContext | undefined, what: string): void {
   if (ctx?.user && !ctx.user.isGM) {
-    throw new Error('Access denied: fork tools may only be queried by a GM.');
+    throw new Error(`Access denied: ${what} may only be queried by a GM.`);
+  }
+}
+
+/**
+ * Upstream's `foundry-mcp-bridge.*` handlers check only `game.user.isGM` — true in the GM
+ * tab whoever sent the query — so any player could run `createNpcActor` & co. through
+ * `game.users.activeGM.query(...)`. Wrap each of them (once) with the sender check. Calls
+ * without a ctx (the bridge socket; pentaryn-prompts calling a handler directly) are
+ * unchanged. Other modules' queries and the fork's own (`.fork.*`, guarded by requireGM)
+ * are left alone. Runs after upstream's registerHandlers() (main.ts).
+ */
+function guardBridgeQueries(): void {
+  for (const [key, h] of Object.entries(CONFIG.queries as Record<string, any>)) {
+    if (!key.startsWith(`${MODULE_ID}.`) || key.startsWith(`${FORK_PREFIX}.`)) continue;
+    if (typeof h !== 'function' || h.__forkGuarded) continue;
+    const guarded = async (data: unknown, ctx?: QueryContext) => {
+      assertSenderIsGM(ctx, 'bridge queries');
+      return h(data, ctx);
+    };
+    (guarded as any).__forkGuarded = true;
+    CONFIG.queries[key] = guarded;
   }
 }
 
@@ -45,7 +73,7 @@ function requireGM(ctx?: { user?: { isGM?: boolean } }): void {
  */
 async function handleEval(
   data: { script: string; timeoutMs?: number },
-  ctx?: { user?: { isGM?: boolean } }
+  ctx?: QueryContext
 ): Promise<any> {
   requireGM(ctx);
 
@@ -114,6 +142,7 @@ async function handleEval(
 
 export function registerForkHandlers(): void {
   CONFIG.queries[`${FORK_PREFIX}.eval`] = handleEval;
+  guardBridgeQueries();
   console.log(`[${MODULE_ID}] fork handlers registered`);
 }
 

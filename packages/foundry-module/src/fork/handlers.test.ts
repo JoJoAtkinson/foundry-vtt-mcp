@@ -63,3 +63,74 @@ describe('fork eval handler', () => {
     expect((await p).error).toBe('eval timed out after 1000ms');
   });
 });
+
+describe('GM guard on bridge queries (mcp-fork-2)', () => {
+  let x: any;
+  let fnP: any;
+  beforeEach(() => {
+    (globalThis as any).game = { user: { isGM: true } };
+    x = vi.fn(async (d: any) => ({ echo: d }));
+    fnP = vi.fn(async () => 'prompts');
+    (globalThis as any).CONFIG = {
+      queries: { 'foundry-mcp-bridge.x': x, 'pentaryn-prompts.list': fnP },
+    };
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    unregisterForkHandlers();
+    vi.restoreAllMocks();
+  });
+  const q = () => (globalThis as any).CONFIG.queries;
+
+  it('the fork eval refuses a non-GM sender and serves the bridge socket (no ctx)', async () => {
+    registerForkHandlers();
+    await expect(q()[EVAL]({ script: 'return 1' }, { user: { isGM: false } })).rejects.toThrow(
+      /may only be queried by a GM/
+    );
+    await expect(q()[EVAL]({ script: 'return 1' })).resolves.toMatchObject({ ok: true, result: 1 });
+  });
+
+  it('a non-GM tab refuses eval outright', async () => {
+    registerForkHandlers();
+    (globalThis as any).game.user.isGM = false;
+    await expect(q()[EVAL]({ script: 'return 1' })).rejects.toThrow(/require a GM session/);
+  });
+
+  it('upstream bridge queries: no ctx and GM senders pass', async () => {
+    registerForkHandlers();
+    await expect(q()['foundry-mcp-bridge.x']({ a: 1 })).resolves.toEqual({ echo: { a: 1 } });
+    await expect(q()['foundry-mcp-bridge.x']({ a: 1 }, { user: { isGM: true } })).resolves.toEqual({
+      echo: { a: 1 },
+    });
+  });
+
+  it('upstream bridge queries from a player', async () => {
+    registerForkHandlers();
+    // Before mcp-fork-2 this resolved {echo:{a:1}}: a player's User#query ran it as the GM.
+    await expect(q()['foundry-mcp-bridge.x']({ a: 1 }, { user: { isGM: false } })).rejects.toThrow(
+      /Access denied/
+    );
+    expect(x).not.toHaveBeenCalled();
+  });
+
+  it('registering twice does not double-wrap', async () => {
+    registerForkHandlers();
+    const once = q()['foundry-mcp-bridge.x'];
+    registerForkHandlers();
+    expect(q()['foundry-mcp-bridge.x']).toBe(once);
+    await q()['foundry-mcp-bridge.x']({ a: 1 });
+    expect(x).toHaveBeenCalledTimes(1);
+  });
+
+  it('the wrapper passes data and ctx through unchanged', async () => {
+    registerForkHandlers();
+    const ctx = { user: { isGM: true }, timeout: 5 };
+    await q()['foundry-mcp-bridge.x']({ a: 1 }, ctx);
+    expect(x).toHaveBeenCalledWith({ a: 1 }, ctx);
+  });
+
+  it("other modules' queries are left alone", () => {
+    registerForkHandlers();
+    expect(q()['pentaryn-prompts.list']).toBe(fnP);
+  });
+});
