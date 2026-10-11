@@ -135,3 +135,88 @@ describe('action log month (mcp-fork-6)', () => {
     expect(count('mcp-2026-11.jsonl')).toBe(1);
   });
 });
+
+describe('value failures and logArgs (mcp-fork-4)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'reg-4-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+  });
+  afterEach(() => {
+    delete process.env.PENTARYN_MCP_LOG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a handler that returns {ok:false} is logged as a failure with its phase and code', async () => {
+    const reg = new ForkRegistry(logger);
+    const value = { ok: false, phase: 'runtime', code: 'NOT_FOUND', summary: 's' };
+    reg.register(DEF('t'), async () => value, { write: true });
+    expect(await reg.dispatch('t', {})).toBe(value);
+    const [line] = logLines(dir);
+    // Before mcp-fork-4 this line said ok:true with no phase or code.
+    expect(line).toMatchObject({
+      tool: 't',
+      ok: false,
+      phase: 'runtime',
+      code: 'NOT_FOUND',
+      summary: 's',
+    });
+    expect(Object.keys(line)).toEqual([
+      'ts',
+      'tool',
+      'args',
+      'ok',
+      'phase',
+      'code',
+      'summary',
+      'ms',
+    ]);
+  });
+
+  it('logArgs shapes the logged args; the handler and result are untouched', async () => {
+    const reg = new ForkRegistry(logger);
+    const seen: any[] = [];
+    const handler = async (a: any) => {
+      seen.push(a);
+      return { summary: 'done', ids: ['x'] };
+    };
+    reg.register(DEF('shaped'), handler, {
+      write: true,
+      logArgs: (a: any) => ({ n: a.script.length }),
+    });
+    reg.register(DEF('raw'), handler, { write: true });
+    const args = { script: 'abc', purpose: 'p' };
+    const shaped = await reg.dispatch('shaped', args);
+    const raw = await reg.dispatch('raw', args);
+    expect(shaped).toEqual(raw);
+    expect(seen).toEqual([args, args]);
+    const lines = logLines(dir);
+    expect(lines[0].args).toEqual({ n: 3 });
+    expect(lines[1].args).toEqual(args);
+  });
+
+  it('a throwing logArgs falls back to the raw args', async () => {
+    const reg = new ForkRegistry(logger);
+    reg.register(DEF('t'), async () => 'ok', {
+      write: true,
+      logArgs: () => {
+        throw new Error('nope');
+      },
+    });
+    await reg.dispatch('t', { a: 1 });
+    expect(logLines(dir)[0].args).toEqual({ a: 1 });
+  });
+
+  it('logArgs applies to the failure line too', async () => {
+    const reg = new ForkRegistry(logger);
+    reg.register(
+      DEF('t'),
+      async () => {
+        throw new Error('boom');
+      },
+      { write: true, logArgs: () => ({ hidden: true }) }
+    );
+    await expect(reg.dispatch('t', { secret: 'x' })).rejects.toThrow('boom');
+    expect(logLines(dir)[0]).toMatchObject({ args: { hidden: true }, ok: false, error: 'boom' });
+  });
+});

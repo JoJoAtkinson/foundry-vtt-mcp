@@ -56,6 +56,19 @@ interface ForkToolEntry {
   handler: ForkToolHandler;
   /** Writes are logged to the action log; reads are not. See {@link WriteFlag}. */
   write: WriteFlag;
+  /** What the action-log line records as `args` (default: the raw args). */
+  logArgs?: (args: any) => unknown;
+}
+
+/** Options of {@link ForkRegistry.register}. */
+export interface ForkToolOptions {
+  write: WriteFlag;
+  /**
+   * Shape the `args` written to the action log — drop a bulky field another log already
+   * keeps (eval-js's script), or expand a reference (prompt-markers' specFile). A
+   * throwing `logArgs` falls back to the raw args. The handler always gets the raw args.
+   */
+  logArgs?: (args: any) => unknown;
 }
 
 /** Truncate anything oversized so a 300-wall import logs its shape, not its coordinates. */
@@ -118,19 +131,21 @@ export class ForkRegistry {
   /**
    * Add a fork tool. `definition` is what `tools/list` shows; `handler` gets the raw
    * arguments (validate them yourself — zod) and returns a {@link ForkToolResult};
-   * `opts.write` decides whether a call lands in the action log. Throws on a duplicate
+   * `opts.write` decides whether a call lands in the action log and `opts.logArgs` what
+   * its line records (see {@link ForkToolOptions}). Throws on a duplicate
    * name. Expected refusals are better returned as values than thrown: a throw becomes
    * an MCP error with only the message.
    */
-  register(
-    definition: ForkToolDefinition,
-    handler: ForkToolHandler,
-    opts: { write: WriteFlag }
-  ): void {
+  register(definition: ForkToolDefinition, handler: ForkToolHandler, opts: ForkToolOptions): void {
     if (this.tools.has(definition.name)) {
       throw new Error(`Fork tool registered twice: ${definition.name}`);
     }
-    this.tools.set(definition.name, { definition, handler, write: opts.write });
+    this.tools.set(definition.name, {
+      definition,
+      handler,
+      write: opts.write,
+      ...(opts.logArgs ? { logArgs: opts.logArgs } : {}),
+    });
   }
 
   /** True if this name is denied by FOUNDRY_MCP_TOOL_FILTER. Applies to upstream tools too. */
@@ -160,9 +175,25 @@ export class ForkRegistry {
     } catch {
       isWrite = true; // a predicate that cannot decide logs — the safe side
     }
+    const logged = () => {
+      if (!entry.logArgs) return args;
+      try {
+        return entry.logArgs(args);
+      } catch {
+        return args;
+      }
+    };
     try {
       const result = await entry.handler(args);
-      if (isWrite) this.log({ tool: name, args, ok: true, result, ms: Date.now() - started });
+      if (isWrite)
+        this.log({
+          tool: name,
+          action: args?.action,
+          args: logged(),
+          ok: true,
+          result,
+          ms: Date.now() - started,
+        });
       return result;
     } catch (err: any) {
       // Failures are logged too — "why did nothing change on Tuesday" is exactly
@@ -170,7 +201,8 @@ export class ForkRegistry {
       if (isWrite) {
         this.log({
           tool: name,
-          args,
+          action: args?.action,
+          args: logged(),
           ok: false,
           error: String(err?.message ?? err),
           ms: Date.now() - started,
@@ -182,6 +214,7 @@ export class ForkRegistry {
 
   private log(entry: {
     tool: string;
+    action?: unknown;
     args: unknown;
     ok: boolean;
     result?: any;
@@ -190,12 +223,17 @@ export class ForkRegistry {
   }): void {
     if (!this.actionLog.enabled) return;
     try {
+      // A handler that reports failure as a value ({ok:false, phase?, code?}) is a
+      // failure in the log too, not ok:true.
+      const r = entry.result && typeof entry.result === 'object' ? entry.result : undefined;
       const line = {
         ts: new Date().toISOString(),
         tool: entry.tool,
-        action: (entry.args as any)?.action ?? undefined,
+        action: entry.action ?? undefined,
         args: sanitizeForLog(entry.args),
-        ok: entry.ok,
+        ok: entry.ok && r?.ok !== false,
+        phase: typeof r?.phase === 'string' ? r.phase : undefined,
+        code: typeof r?.code === 'string' ? r.code : undefined,
         summary: entry.ok ? entry.result?.summary : undefined,
         ids: entry.ok ? entry.result?.ids : undefined,
         error: entry.error,

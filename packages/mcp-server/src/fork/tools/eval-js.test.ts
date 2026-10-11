@@ -93,9 +93,15 @@ describe('eval-js log (characterisation, mcp-fork-5)', () => {
     expect(evalLines(dir)[0]).toMatchObject({ ok: false, phase: 'runtime', error: 'x', ms: 1 });
   });
 
-  it('registers as a write', () => {
+  it('registers as a write whose action-log args omit the script (mcp-fork-4)', () => {
     const { opts } = setup(async () => ({}));
     expect(opts.write).toBe(true);
+    // Before mcp-fork-4 there was no logArgs: the registry line held the whole script too.
+    expect(opts.logArgs({ script: 'return 1', purpose: 'p', timeoutMs: 5000 })).toEqual({
+      purpose: 'p',
+      scriptChars: 8,
+      timeoutMs: 5000,
+    });
   });
 
   it('no PENTARYN_MCP_LOG_DIR -> no file, the call still answers', async () => {

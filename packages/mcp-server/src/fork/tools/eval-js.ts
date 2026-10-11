@@ -116,6 +116,14 @@ export function registerEvalJs(
         });
       }
     },
-    { write: true }
+    {
+      write: true,
+      // The full script is in the eval log; the action log keeps only its size.
+      logArgs: (a: any) => ({
+        purpose: a?.purpose,
+        scriptChars: String(a?.script ?? '').length,
+        timeoutMs: a?.timeoutMs,
+      }),
+    }
   );
 }
