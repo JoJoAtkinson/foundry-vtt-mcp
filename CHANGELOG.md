@@ -1,3 +1,42 @@
+## v0.8.3-pentaryn.2 (2026-10-11)
+
+Fork release (branch `pentaryn`, wave 2 of the pentaryn blueprint migration). Needs **both**
+halves deployed together: the server (`npm run build:server`, restart the backend) and the
+bridge module (`npm run build:foundry`, copy into `Data/modules/foundry-mcp-bridge`, reload
+the GM tab) — `dnd5e-add-feature`'s recharge needs the new module query.
+
+### New tools (D14)
+
+- `pentaryn-read` `{ns, path, ref?, opts?, timeoutMs?}` — a read method of a Pentaryn blueprint module (`game.pentaryn.<ns>.<path>`); `{ns:"*", path:"describe"}` is the discovery call. Write rows are refused (`BAD_ARGS: use pentaryn-write`), unknown ns/path answer `NOT_FOUND` listing what exists, module refusals (`NOT_FOUND`, `AMBIGUOUS`, …) are values. Logged compactly: `{ts, tool, ns, path, ref, ok, code?, ms, client?}` — no arguments, no result
+- `pentaryn-write` `{… , dryRun?}` — a write method, as the GM; read rows are refused (`BAD_ARGS: use pentaryn-read`); logged in full (args, ok, code, summary, ids)
+- Both run one fixed script template through the existing `fork.eval` query and route on `describe()` read in the GM tab on every call; `ref` is resolved by the module, never a substring. Positional parameters other than `ref`/`opts` are passed by name inside `opts`
+
+### Action log
+
+- Upstream write tools (`create-*`, `update-*`, `delete-*`, `manage-*`, `dnd5e-*`, `move-token`, …) are logged to `mcp-<YYYY-MM>.jsonl` too, not only fork tools
+- Every action and eval line carries `client: {pid, ppid}` of the calling wrapper (one per Claude session)
+- The month in `mcp-<YYYY-MM>.jsonl` is taken when the line is written, not when the backend started
+- The eval log rotates monthly: `eval-<YYYY-MM>.jsonl` (the old `eval.jsonl` is left in place; read `eval*.jsonl`)
+- A tool that answers `{ok:false}` is logged `ok:false` with its `phase`/`code`; `eval-js`'s action-log line keeps `{purpose, scriptChars, timeoutMs}` instead of the whole script (the script stays in the eval log)
+- An `eval-js` call rejected for bad arguments leaves a `phase:"args"` eval line; a browser-side timeout is marked `timedOut: true`
+- `prompt-markers replace` with `specFile` logs the file's replacements, not only its path
+
+### Behaviour
+
+- `FOUNDRY_MCP_TOOL_FILTER` now refuses calls to a filtered tool (upstream ones too), not only hides it
+- `tools/list_changed` fires on a changed `inputSchema` or a same-length description edit (the key is a sha1 of name, description and schema)
+- `dnd5e-add-feature` `recharge`: applied through the GM-guarded `foundry-mcp-bridge.fork.applyRecharge` query with upstream's actor resolution, so a scene **token id** works; the item is found by id; the outcome is logged
+- Security: upstream `foundry-mcp-bridge.*` queries refuse a `User#query` from a non-GM sender (they checked only the running client); calls with no sender (the bridge socket, a module calling the handler directly) are unchanged. Fork guard errors are coded `NOT_GM: Access denied: …`
+- Eval: the timeout timer is cleared when a script finishes; a timeout says `timedOut: true` and that the script may still be running
+- `eval-js`'s description states the serializer rules (depth ≤4, arrays ≤200, collections ≤100, …) and points at `game.pentaryn.describe()` and the D14 tools
+
+### Internal
+
+- `src/fork/action-log.ts` (one writer for both logs), `tool-list-watch.ts` (the wrapper's poll, out of `index.ts`), `upstream-writes.ts`, `recharge.ts` (both packages), `serialize.ts` + `SERIALIZE_LIMITS` (module), `legacy-keys.ts` (one module-scope Set), `prompt-markers.schema.ts` (the zod block, with one `SIZES`, `InlineItem`, `Disposition`); typed tool contract (`WriteFlag`, `ForkToolResult`, `ForkCallMeta`, `logArgs`)
+- `packages/foundry-module` has a vitest harness: `npm -w @foundry-mcp/module test -- --run`
+
+---
+
 ## v0.8.3-pentaryn.1 (2026-10-10)
 
 Fork release (branch `pentaryn`) porting the D&D 5e paths to dnd5e 6.0.6.
