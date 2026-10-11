@@ -36,8 +36,12 @@ const DEFINITION = {
     'serialized result. `game`, `canvas`, `ui` and all document classes are in scope; top-level ' +
     '`await` works. Use when no purpose-built tool covers the need — reach for a real tool first ' +
     'when one exists, because this has no schema and no validation. Every call is logged with its ' +
-    'stated purpose so recurring uses can be promoted into proper tools. Foundry documents are ' +
-    'serialized to id + name + source data; large collections are truncated.',
+    'stated purpose so recurring uses can be promoted into proper tools. Result rules: depth <=4 ' +
+    '(deeper -> "[max depth]"), arrays <=200, Map/Set/Collection <=100, `_`-keys except `_id` ' +
+    'dropped, a repeated object -> "[circular]", a top-level Document includes its full source ' +
+    '(nested ones only id + name); return plain objects with the fields you need. Pentaryn ' +
+    'worlds: module APIs are under game.pentaryn.<ns>; call game.pentaryn.describe() first ' +
+    '(index: context/foundry/README.md).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -147,3 +151,5 @@ export function registerEvalJs(
     }
   );
 }
+
+export { DEFINITION as EVAL_JS_DEFINITION };

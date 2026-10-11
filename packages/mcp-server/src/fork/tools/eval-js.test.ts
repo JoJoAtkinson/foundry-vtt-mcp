@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ZodError } from 'zod';
-import { registerEvalJs } from './eval-js.js';
+import { EVAL_JS_DEFINITION, registerEvalJs } from './eval-js.js';
 
 const logger: any = {
   info: vi.fn(),
@@ -212,5 +212,16 @@ describe('caller identity on the eval line (mcp-fork-7)', () => {
     expect(Object.keys(ok)).toEqual(['ts', 'purpose', 'script', 'ok', 'phase', 'ms', 'client']);
     expect(ok.client).toEqual({ pid: 9, ppid: 8 });
     expect(bad).toMatchObject({ phase: 'args', client: { pid: 9, ppid: 8 } });
+  });
+});
+
+describe('description (mcp-fork-21)', () => {
+  it('states the serializer limits and where pentaryn APIs live', () => {
+    const d = EVAL_JS_DEFINITION.description;
+    // These numbers are the module's SERIALIZE_LIMITS (foundry-module serialize.test.ts).
+    expect(d).toMatch(/depth <=4/);
+    expect(d).toMatch(/arrays <=200/);
+    expect(d).toMatch(/Collection <=100/);
+    expect(d).toMatch(/game\.pentaryn\.describe\(\)/);
   });
 });
