@@ -18,10 +18,13 @@ excludes=(':!**/fork/**' ':!CHANGELOG.md' ':!package-lock.json' ':!FORK.md' ':!s
 echo "fork footprint vs ${base:0:7} (src/fork/, CHANGELOG.md, package-lock.json, FORK.md excluded):"
 git diff --stat "$base"...HEAD -- . "${excludes[@]}"
 
+# First cell of every table row in FORK.md, backticks and padding stripped (prettier pads cells).
+documented="$(awk -F'|' '/^\| `/{gsub(/[ `]/, "", $2); print $2}' FORK.md)"
+
 status=0
 while IFS= read -r path; do
   [ -z "$path" ] && continue
-  if ! grep -qF "| \`$path\` |" FORK.md; then
+  if ! grep -qxF "$path" <<<"$documented"; then
     echo "✗ $path is changed from upstream but has no row in FORK.md" >&2
     status=1
   fi
