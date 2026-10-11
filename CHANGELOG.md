@@ -1,3 +1,13 @@
+## Unreleased (fix/optional-2026-10-11)
+
+Fixes from the 2026-10-11 live checks. Deploy both halves (server and bridge module).
+
+### Behaviour
+
+- `toggle-token-condition` with `active` omitted toggles the current state, as its schema always said; before, the bridge module refused it with `active must be a boolean`. Resolved in the fork's bridge-query wrapper (`src/fork/toggle-condition.ts`); no upstream file changes
+
+---
+
 ## v0.8.3-pentaryn.2 (2026-10-11)
 
 Fork release (branch `pentaryn`, wave 2 of the pentaryn blueprint migration). Needs **both**
