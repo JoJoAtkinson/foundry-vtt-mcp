@@ -1,7 +1,7 @@
 // mcp-fork-9: the rules serialize() applies to every eval-js result, pinned against the
 // code as it was in handlers.ts before the move. Frozen: only the import path changes.
 import { describe, it, expect } from 'vitest';
-import { serialize } from './handlers.js';
+import { serialize, SERIALIZE_LIMITS } from './serialize.js';
 
 describe('serialize', () => {
   it('Set -> array of its values', () => {
@@ -78,5 +78,12 @@ describe('serialize', () => {
 
   it('strings are not truncated', () => {
     expect(serialize('x'.repeat(10_000))).toHaveLength(10_000);
+  });
+});
+
+describe('SERIALIZE_LIMITS', () => {
+  it('are the numbers the eval-js description states', () => {
+    // packages/mcp-server/src/fork/tools/eval-js.test.ts pins the same numbers in the text.
+    expect(SERIALIZE_LIMITS).toEqual({ depth: 4, array: 200, collection: 100 });
   });
 });
