@@ -40,7 +40,8 @@ function requireGM(ctx?: { user?: { isGM?: boolean } }): void {
  * Deliberate escape hatch: the whole point is that it has no schema. It exists so
  * unanticipated needs don't block on shipping a tool, and — more importantly —
  * so its LOG becomes the demand signal for which real tools to build next.
- * Every call is logged server-side regardless of logging configuration.
+ * The eval-js tool logs every call server-side (eval-<YYYY-MM>.jsonl) when
+ * PENTARYN_MCP_LOG_DIR is set; this handler does not log.
  */
 async function handleEval(
   data: { script: string; timeoutMs?: number },
@@ -65,12 +66,24 @@ async function handleEval(
 
   const timeoutMs = Math.min(Math.max(data.timeoutMs ?? 10_000, 1_000), 60_000);
 
+  // The timer is cleared however the race ends, so a fast script leaves nothing pending
+  // in the GM tab; a timeout is flagged, because the script itself cannot be stopped.
+  const TIMED_OUT = Symbol('timed out');
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const result = await Promise.race([
       fn(),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`eval timed out after ${timeoutMs}ms`)), timeoutMs)
-      ),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              Object.assign(new Error(`eval timed out after ${timeoutMs}ms`), {
+                [TIMED_OUT]: true,
+              })
+            ),
+          timeoutMs
+        );
+      }),
     ]);
     return {
       ok: true,
@@ -87,7 +100,15 @@ async function handleEval(
       ms: Date.now() - started,
       error: String(err?.message ?? err),
       stack: err?.stack?.split('\n').slice(0, 5),
+      ...(err?.[TIMED_OUT]
+        ? {
+            timedOut: true,
+            note: 'the script may still be running; re-read state before retrying',
+          }
+        : {}),
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -135,6 +135,7 @@ export function registerEvalJs(
           ok: thrown ? false : (result?.ok ?? false),
           phase: thrown ? 'transport' : result?.phase,
           error: thrown ? String((thrown as any)?.message ?? thrown) : result?.error,
+          timedOut: !thrown && result?.timedOut === true ? true : undefined,
           ms: result?.ms ?? Date.now() - started,
           client: meta?.client,
         });

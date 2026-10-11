@@ -94,6 +94,31 @@ describe('eval-js log (characterisation, mcp-fork-5)', () => {
     expect(evalLines(dir)[0]).toMatchObject({ ok: false, phase: 'runtime', error: 'x', ms: 1 });
   });
 
+  it('a browser-side timeout is marked timedOut on the line (mcp-fork-8)', async () => {
+    const { handler } = setup(async () => ({
+      ok: false,
+      phase: 'runtime',
+      ms: 1000,
+      error: 'eval timed out after 1000ms',
+      timedOut: true,
+      note: 'the script may still be running; re-read state before retrying',
+    }));
+    const res = await handler({ script: 'x', purpose: 'p', timeoutMs: 1000 });
+    expect(res.timedOut).toBe(true);
+    const [line] = evalLines(dir);
+    expect(Object.keys(line)).toEqual([
+      'ts',
+      'purpose',
+      'script',
+      'ok',
+      'phase',
+      'error',
+      'timedOut',
+      'ms',
+    ]);
+    expect(line).toMatchObject({ ok: false, phase: 'runtime', timedOut: true });
+  });
+
   it('registers as a write whose action-log args omit the script (mcp-fork-4)', () => {
     const { opts } = setup(async () => ({}));
     expect(opts.write).toBe(true);
