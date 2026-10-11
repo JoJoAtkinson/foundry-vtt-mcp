@@ -9,6 +9,7 @@ Fixes from the 2026-10-11 live checks. Deploy both halves (server and bridge mod
 ### Action log
 
 - `pentaryn-write` lines carry the ids of the documents the module returned when its result has no `ids` of its own (`{uuid}`, `{_id}`, a Foundry-shaped `{id}`, `documents`, arrays; depth ≤ 4, ≤ 50 ids; never throws). `dropbin.restoreResult` logs the created item and its actor instead of `ids: []`. A dry run or a refusal logs `ids: []`
+- An `eval-js` call rejected for its own arguments: the action-log line in `mcp-<YYYY-MM>.jsonl` now has `phase: "args"` and the same one-line error as the eval line (`script: …; timeoutMs: …`), not the multi-line validation dump. The thrown error is unchanged. Any fork handler can attach `phase` / `logError` to what it throws
 
 ---
 
