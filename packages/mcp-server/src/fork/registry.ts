@@ -15,6 +15,7 @@
 import { appendFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import type { Logger } from '../logger.js';
+import type { McpContentBlock } from './content.js';
 
 export interface ForkToolDefinition {
   name: string;
@@ -22,16 +23,40 @@ export interface ForkToolDefinition {
   inputSchema: Record<string, unknown>;
 }
 
-export type ForkToolHandler = (args: any) => Promise<any>;
+/**
+ * Whether a call is a write (logged to the action log) or a read (not logged). A
+ * predicate lets one fat tool (an `action` enum) log only its writing actions; a
+ * predicate that throws counts as a write.
+ */
+export type WriteFlag = boolean | ((args: any) => boolean);
+
+/**
+ * What a fork tool handler returns. A string is sent as one text block. An object is
+ * JSON-stringified into one text block, except:
+ *  - `summary` and `ids` are copied into the action-log line of a write;
+ *  - `__mcpContent` (non-empty, every entry a valid block) replaces the text block
+ *    entirely — the way a tool returns an image (content.ts `toMcpPayload`).
+ */
+export type ForkToolResult =
+  | string
+  | ({ summary?: string; ids?: string[]; __mcpContent?: McpContentBlock[] } & Record<
+      string,
+      unknown
+    >);
+
+/** Per-call context the backend passes beside the arguments. Handlers may ignore it. */
+export interface ForkCallMeta {
+  /** The calling wrapper process (one per Claude session); several share one backend. */
+  client?: unknown;
+}
+
+export type ForkToolHandler = (args: any, meta?: ForkCallMeta) => Promise<ForkToolResult>;
 
 interface ForkToolEntry {
   definition: ForkToolDefinition;
   handler: ForkToolHandler;
-  /**
-   * Writes are logged to the action log; reads are not. A predicate lets one fat tool
-   * (an `action` enum) log only its writing actions.
-   */
-  write: boolean | ((args: any) => boolean);
+  /** Writes are logged to the action log; reads are not. See {@link WriteFlag}. */
+  write: WriteFlag;
 }
 
 /** Truncate anything oversized so a 300-wall import logs its shape, not its coordinates. */
@@ -106,10 +131,17 @@ export class ForkRegistry {
     }
   }
 
+  /**
+   * Add a fork tool. `definition` is what `tools/list` shows; `handler` gets the raw
+   * arguments (validate them yourself — zod) and returns a {@link ForkToolResult};
+   * `opts.write` decides whether a call lands in the action log. Throws on a duplicate
+   * name. Expected refusals are better returned as values than thrown: a throw becomes
+   * an MCP error with only the message.
+   */
   register(
     definition: ForkToolDefinition,
     handler: ForkToolHandler,
-    opts: { write: boolean | ((args: any) => boolean) }
+    opts: { write: WriteFlag }
   ): void {
     if (this.tools.has(definition.name)) {
       throw new Error(`Fork tool registered twice: ${definition.name}`);
