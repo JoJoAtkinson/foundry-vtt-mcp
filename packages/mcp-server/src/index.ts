@@ -20,7 +20,7 @@ import * as fs from 'fs';
 
 import * as path from 'path';
 
-import { watchToolList } from './fork/tool-list-watch.js';
+import { watchToolList } from './fork/tool-list-watch.js'; // fork: tools/list_changed poll
 
 const CONTROL_HOST = '127.0.0.1';
 
@@ -305,8 +305,8 @@ async function startWrapper() {
     } catch {}
   }
 
-  // listChanged: a session started before the backend was rebuilt (e.g. a new fork tool) would
-  // otherwise keep the tool list it fetched at startup until the session restarts.
+  // fork: listChanged — a session started before the backend was rebuilt (a new fork tool)
+  // would otherwise keep the tool list it fetched at startup until the session restarts.
   const mcp = new Server(
     { name: config.server.name, version: config.server.version },
     { capabilities: { tools: { listChanged: true } } }
@@ -358,7 +358,7 @@ async function startWrapper() {
         });
       } catch {}
 
-      markServed(res.tools || []);
+      markServed(res.tools || []); // fork: the tool-list watch's baseline
       return { tools: res.tools || [] };
     } catch (e) {
       // Log but return empty to remain MCP-compliant

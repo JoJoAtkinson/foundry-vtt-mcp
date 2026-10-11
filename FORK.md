@@ -63,13 +63,19 @@ queries, the GM guard on upstream bridge queries), `serialize.ts`, `recharge.ts`
 
 `scripts/fork-footprint.sh` counts `fork:` in each file below and fails on a mismatch, so a new
 hunk in a marked file cannot land without this table moving too. (backend.ts has eight logical hunks
-and nine markers: the import hunk is unmarked, the audit adds three.)
+and nine markers: the import hunk is unmarked, the audit adds three. index.ts marks its six hunks
+with five: one comment covers `listChanged: true`. add-feature.ts marks each of its five hunks.
+data-access.ts marks only its fork-wiring import; its other seven hunks are PR candidates and
+stay unmarked so the upstream PR carries no fork comments.)
 
-| File                                           | `fork:` markers |
-| ---------------------------------------------- | --------------- |
-| `packages/mcp-server/src/backend.ts`           | 9               |
-| `packages/mcp-server/src/foundry-connector.ts` | 1               |
-| `packages/foundry-module/src/main.ts`          | 1               |
+| File                                                 | `fork:` markers |
+| ---------------------------------------------------- | --------------- |
+| `packages/mcp-server/src/backend.ts`                 | 9               |
+| `packages/mcp-server/src/index.ts`                   | 5               |
+| `packages/mcp-server/src/tools/dnd5e/add-feature.ts` | 5               |
+| `packages/foundry-module/src/data-access.ts`         | 1               |
+| `packages/mcp-server/src/foundry-connector.ts`       | 1               |
+| `packages/foundry-module/src/main.ts`                | 1               |
 
 ## Working on the fork
 

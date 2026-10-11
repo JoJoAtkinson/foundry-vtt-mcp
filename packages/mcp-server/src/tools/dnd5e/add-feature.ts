@@ -3,7 +3,7 @@ import { FoundryClient } from '../../foundry-client.js';
 import { Logger } from '../../logger.js';
 import { ErrorHandler } from '../../utils/error-handler.js';
 import { detectGameSystem, getCachedSystemId } from '../../utils/system-detection.js';
-import { applyRecharge } from '../../fork/recharge.js';
+import { applyRecharge } from '../../fork/recharge.js'; // fork: recharge
 
 // ---------------------------------------------------------------------------
 // Canonical value sets for soft validation (warnings, not errors)
@@ -189,7 +189,7 @@ export class DnD5eAddFeatureTool {
               description:
                 'Recharge n–6 (5 → "Recharge 5–6"): one use, regained on a d6 roll of n+ at the start of ' +
                 "the creature's turn; every activity of the feature consumes it. Used by: save, attack, " +
-                'attack-with-save, aura, passive. (fork)',
+                'attack-with-save, aura, passive. (fork)', // fork: recharge (src/fork/recharge.ts)
             },
             activationType: {
               type: 'string',
@@ -441,7 +441,7 @@ export class DnD5eAddFeatureTool {
   // ---------------------------------------------------------------------------
 
   async handleAddFeature(args: any): Promise<any> {
-    const { featureType, recharge } = z
+    const { featureType, recharge } = z // fork: + recharge
       .object({
         featureType: z.enum([
           'passive',
@@ -452,13 +452,13 @@ export class DnD5eAddFeatureTool {
           'spellcasting',
           'spells',
         ]),
-        recharge: z.number().int().min(2).max(6).optional(),
+        recharge: z.number().int().min(2).max(6).optional(), // fork: recharge
       })
       .parse(args);
 
     const res = await this.dispatchFeature(featureType, args);
     if (recharge && !['spellcasting', 'spells'].includes(featureType)) {
-      // (fork) Recharge n–6 through the fork's typed query: src/fork/recharge.ts.
+      // fork: Recharge n–6 through the fork's typed query: src/fork/recharge.ts.
       const note = await applyRecharge(
         this.foundryClient,
         {

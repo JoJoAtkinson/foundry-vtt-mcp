@@ -1,7 +1,7 @@
 import { MODULE_ID, ERROR_MESSAGES, TOKEN_DISPOSITIONS } from './constants.js';
 import { permissionManager } from './permissions.js';
 import { transactionManager } from './transaction-manager.js';
-import { DND5E_LEGACY_MOVEMENT_KEYS } from './fork/legacy-keys.js';
+import { DND5E_LEGACY_MOVEMENT_KEYS } from './fork/legacy-keys.js'; // fork: dnd5e 6 movement shim
 // Local type definitions to avoid shared package import issues
 interface CharacterInfo {
   id: string;
