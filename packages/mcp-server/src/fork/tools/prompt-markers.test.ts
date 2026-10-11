@@ -689,6 +689,386 @@ describe('replace', () => {
   });
 });
 
+describe('schema characterisation (mcp-fork-14)', () => {
+  // Frozen before the schema block moved to prompt-markers.schema.ts: every input's parse
+  // result or BAD_SPEC text must stay byte-identical.
+  const run = (raw: unknown) => {
+    try {
+      return { ok: true, data: parseArgs(raw).args };
+    } catch (e: any) {
+      return { ok: false, message: e.message };
+    }
+  };
+  const rep = (w: any, extra: any = {}) => ({
+    action: 'replace',
+    call: 'pm-1',
+    replacements: [{ id: 'p1', with: w, ...extra }],
+  });
+  const npc = { kind: 'npc', npc: { name: 'Ogre', size: 'large' } };
+  const table: [string, unknown][] = [
+    ['actor', rep({ kind: 'actor', actorId: 'A1', patch: { hp: 20, size: 'large' } })],
+    ['npc', rep({ ...npc, features: [{ featureType: 'attack', recharge: 5 }] })],
+    [
+      'character',
+      rep({
+        kind: 'character',
+        name: 'Esren',
+        level: 3,
+        class: 'Wizard',
+        species: 'Elf',
+        background: 'Sage',
+        abilities: { int: 15 },
+        items: ['Dagger', { name: 'Rope' }, { data: { name: 'X' } }],
+        startingEquipment: { class: 'A' },
+      }),
+    ],
+    ['hotspot', rep({ kind: 'hotspot', name: 'Chest', description: 'd', items: [{ data: {} }] })],
+    ['note', rep({ kind: 'note', name: 'N', html: '<p>x</p>', ownership: 'observer' })],
+    ['light', rep({ kind: 'light', config: { dim: 10 } })],
+    ['tile', rep({ kind: 'tile', src: 'a.webp', width: 2 })],
+    ['none', rep({ kind: 'none', reason: 'cut' })],
+    ['actor unknown key', rep({ kind: 'actor', actorId: 'A1', bogus: 1 })],
+    ['npc unknown key', rep({ ...npc, bogus: 1 })],
+    ['character unknown key', rep({ kind: 'character', name: 'E', bogus: 1 })],
+    ['hotspot unknown key', rep({ kind: 'hotspot', name: 'C', description: 'd', bogus: 1 })],
+    ['note unknown key', rep({ kind: 'note', name: 'N', html: '', bogus: 1 })],
+    ['light unknown key', rep({ kind: 'light', config: {}, bogus: 1 })],
+    ['tile unknown key', rep({ kind: 'tile', src: 's', bogus: 1 })],
+    ['none unknown key', rep({ kind: 'none', reason: 'r', bogus: 1 })],
+    ['patch.size lg', rep({ kind: 'actor', actorId: 'A1', patch: { size: 'lg' } })],
+    ['npc.size lg', rep({ kind: 'npc', npc: { name: 'O', size: 'lg' } })],
+    [
+      'addItems data quantity 0',
+      rep({ kind: 'actor', actorId: 'A1', patch: { addItems: [{ data: {}, quantity: 0 }] } }),
+    ],
+    [
+      'addItems name only',
+      rep({ kind: 'actor', actorId: 'A1', patch: { addItems: [{ name: 'Rope' }] } }),
+    ],
+    [
+      'patch disposition evil',
+      rep({ kind: 'actor', actorId: 'A1', patch: { disposition: 'evil' } }),
+    ],
+    ['replacement disposition evil', rep({ kind: 'none', reason: 'r' }, { disposition: 'evil' })],
+    ['party 4x5', { action: 'gather', party: '4x5' }],
+    ['party object', { action: 'gather', party: { size: 4, level: 5 } }],
+    ['party list', { action: 'gather', party: [3, 3, 4] }],
+    ['party bad', { action: 'gather', party: '4 by 5' }],
+    ['scenes string', { action: 'gather', scenes: 'Goblin Warren' }],
+    ['crops with p1', { action: 'crops', call: 'pm-1', encounters: ['p1'] }],
+    ['show without id', { action: 'show', call: 'pm-1' }],
+    ['unknown kind', rep({ kind: 'wall' })],
+  ];
+
+  it('parses the fixed table identically', () => {
+    expect(Object.fromEntries(table.map(([k, v]) => [k, run(v)]))).toMatchInlineSnapshot(`
+      {
+        "actor": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "actorId": "A1",
+                  "kind": "actor",
+                  "patch": {
+                    "hp": 20,
+                    "size": "large",
+                  },
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "actor unknown key": {
+          "message": "BAD_SPEC: replacements.0.with: Unrecognized key(s) in object: 'bogus'",
+          "ok": false,
+        },
+        "addItems data quantity 0": {
+          "message": "BAD_SPEC: replacements.0.with.patch.addItems.0.quantity: Number must be greater than or equal to 1; replacements.0.with.patch.addItems.0: Unrecognized key(s) in object: 'data'; replacements.0.with.patch.addItems.0: item needs uuid or name",
+          "ok": false,
+        },
+        "addItems name only": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "actorId": "A1",
+                  "kind": "actor",
+                  "patch": {
+                    "addItems": [
+                      {
+                        "name": "Rope",
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "character": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "abilities": {
+                    "int": 15,
+                  },
+                  "background": "Sage",
+                  "class": "Wizard",
+                  "items": [
+                    "Dagger",
+                    {
+                      "name": "Rope",
+                    },
+                    {
+                      "data": {
+                        "name": "X",
+                      },
+                    },
+                  ],
+                  "kind": "character",
+                  "level": 3,
+                  "name": "Esren",
+                  "species": "Elf",
+                  "startingEquipment": {
+                    "class": "A",
+                  },
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "character unknown key": {
+          "message": "BAD_SPEC: replacements.0.with.level: Required; replacements.0.with.class: Required; replacements.0.with.species: Required; replacements.0.with.background: Required; replacements.0.with.abilities: Required; replacements.0.with: Unrecognized key(s) in object: 'bogus'",
+          "ok": false,
+        },
+        "crops with p1": {
+          "message": "BAD_SPEC: encounters.0: expected an encounter id like "E1"",
+          "ok": false,
+        },
+        "hotspot": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "description": "d",
+                  "items": [
+                    {
+                      "data": {},
+                    },
+                  ],
+                  "kind": "hotspot",
+                  "name": "Chest",
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "hotspot unknown key": {
+          "message": "BAD_SPEC: replacements.0.with: Unrecognized key(s) in object: 'bogus'",
+          "ok": false,
+        },
+        "light": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "config": {
+                    "dim": 10,
+                  },
+                  "kind": "light",
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "light unknown key": {
+          "message": "BAD_SPEC: replacements.0.with: Unrecognized key(s) in object: 'bogus'",
+          "ok": false,
+        },
+        "none": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "kind": "none",
+                  "reason": "cut",
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "none unknown key": {
+          "message": "BAD_SPEC: replacements.0.with: Unrecognized key(s) in object: 'bogus'",
+          "ok": false,
+        },
+        "note": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "html": "<p>x</p>",
+                  "kind": "note",
+                  "name": "N",
+                  "ownership": "observer",
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "note unknown key": {
+          "message": "BAD_SPEC: replacements.0.with: Unrecognized key(s) in object: 'bogus'",
+          "ok": false,
+        },
+        "npc": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "features": [
+                    {
+                      "featureType": "attack",
+                      "recharge": 5,
+                    },
+                  ],
+                  "kind": "npc",
+                  "npc": {
+                    "name": "Ogre",
+                    "size": "large",
+                  },
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "npc unknown key": {
+          "message": "BAD_SPEC: replacements.0.with: Unrecognized key(s) in object: 'bogus'",
+          "ok": false,
+        },
+        "npc.size lg": {
+          "message": "BAD_SPEC: replacements.0.with.npc.size: Invalid enum value. Expected 'tiny' | 'small' | 'medium' | 'large' | 'huge' | 'gargantuan', received 'lg'",
+          "ok": false,
+        },
+        "party 4x5": {
+          "data": {
+            "action": "gather",
+            "party": "4x5",
+          },
+          "ok": true,
+        },
+        "party bad": {
+          "message": "BAD_SPEC: party: party like "4x5" (size x level)",
+          "ok": false,
+        },
+        "party list": {
+          "data": {
+            "action": "gather",
+            "party": [
+              3,
+              3,
+              4,
+            ],
+          },
+          "ok": true,
+        },
+        "party object": {
+          "data": {
+            "action": "gather",
+            "party": {
+              "level": 5,
+              "size": 4,
+            },
+          },
+          "ok": true,
+        },
+        "patch disposition evil": {
+          "message": "BAD_SPEC: replacements.0.with.patch.disposition: Invalid enum value. Expected 'hostile' | 'neutral' | 'friendly' | 'secret', received 'evil'",
+          "ok": false,
+        },
+        "patch.size lg": {
+          "message": "BAD_SPEC: replacements.0.with.patch.size: Invalid enum value. Expected 'tiny' | 'small' | 'medium' | 'large' | 'huge' | 'gargantuan', received 'lg'",
+          "ok": false,
+        },
+        "replacement disposition evil": {
+          "message": "BAD_SPEC: replacements.0.disposition: Invalid enum value. Expected 'hostile' | 'neutral' | 'friendly' | 'secret', received 'evil'",
+          "ok": false,
+        },
+        "scenes string": {
+          "data": {
+            "action": "gather",
+            "scenes": [
+              "Goblin Warren",
+            ],
+          },
+          "ok": true,
+        },
+        "show without id": {
+          "message": "BAD_SPEC: (args): show needs call + id, or sceneId + markerId",
+          "ok": false,
+        },
+        "tile": {
+          "data": {
+            "action": "replace",
+            "call": "pm-1",
+            "replacements": [
+              {
+                "id": "p1",
+                "with": {
+                  "kind": "tile",
+                  "src": "a.webp",
+                  "width": 2,
+                },
+              },
+            ],
+          },
+          "ok": true,
+        },
+        "tile unknown key": {
+          "message": "BAD_SPEC: replacements.0.with: Unrecognized key(s) in object: 'bogus'",
+          "ok": false,
+        },
+        "unknown kind": {
+          "message": "BAD_SPEC: replacements.0.with.kind: Invalid discriminator value. Expected 'actor' | 'npc' | 'character' | 'hotspot' | 'note' | 'light' | 'tile' | 'none'",
+          "ok": false,
+        },
+      }
+    `);
+  });
+});
+
 describe('registry logging', () => {
   beforeEach(() => {
     delete process.env.PENTARYN_MCP_LOG_DIR;
