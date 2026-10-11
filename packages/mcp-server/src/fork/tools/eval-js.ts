@@ -76,7 +76,25 @@ export function registerEvalJs(
   registry.register(
     DEFINITION,
     async (rawArgs: unknown) => {
-      const args = ArgsSchema.parse(rawArgs);
+      const parsed = ArgsSchema.safeParse(rawArgs);
+      if (!parsed.success) {
+        // A rejected call is still a call: the promotion review reads this log, and a
+        // missing purpose or an out-of-range timeout is worth seeing there.
+        const raw = (rawArgs ?? {}) as { purpose?: unknown; script?: unknown };
+        actionLog.append('eval', {
+          ts: new Date().toISOString(),
+          purpose: typeof raw.purpose === 'string' ? raw.purpose : null,
+          script: typeof raw.script === 'string' ? raw.script : null,
+          ok: false,
+          phase: 'args',
+          error: parsed.error.issues
+            .map(i => `${i.path.join('.') || '(args)'}: ${i.message}`)
+            .join('; '),
+          ms: 0,
+        });
+        throw parsed.error; // the original ZodError, so the thrown text is unchanged
+      }
+      const args = parsed.data;
       log.info(`eval: ${args.purpose}`);
 
       const started = Date.now();

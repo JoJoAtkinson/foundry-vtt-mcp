@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { ZodError } from 'zod';
 import { registerEvalJs } from './eval-js.js';
 
 const logger: any = {
@@ -133,5 +134,61 @@ describe('eval log file name (python-tooling-30)', () => {
     await handler({ script: 'return 2', purpose: 'p' });
     // Before python-tooling-30 both lines went to one unrotated eval.jsonl.
     expect(readdirSync(dir).sort()).toEqual(['eval-2026-10.jsonl', 'eval-2026-11.jsonl']);
+  });
+});
+
+describe('bad arguments (mcp-fork-17)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'evaljs-args-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+  });
+  afterEach(() => {
+    delete process.env.PENTARYN_MCP_LOG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a call missing purpose rejects with the ZodError and is recorded', async () => {
+    const { handler, client } = setup(async () => ({ ok: true }));
+    const err = await handler({ script: 'return 1' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ZodError);
+    expect(String(err)).toMatch(/purpose/);
+    expect(client.query).not.toHaveBeenCalled();
+    // Before mcp-fork-17 nothing reached the eval log.
+    const lines = evalLines(dir);
+    expect(lines).toHaveLength(1);
+    expect(Object.keys(lines[0])).toEqual([
+      'ts',
+      'purpose',
+      'script',
+      'ok',
+      'phase',
+      'error',
+      'ms',
+    ]);
+    expect(lines[0]).toMatchObject({
+      purpose: null,
+      script: 'return 1',
+      ok: false,
+      phase: 'args',
+      ms: 0,
+    });
+    expect(lines[0].error).toMatch(/^purpose: /);
+  });
+
+  it('several issues are joined path: message; …', async () => {
+    const { handler } = setup(async () => ({ ok: true }));
+    await expect(handler({ purpose: 'p', timeoutMs: 500 })).rejects.toBeInstanceOf(ZodError);
+    const [line] = evalLines(dir);
+    expect(line).toMatchObject({ purpose: 'p', script: null, phase: 'args' });
+    expect(line.error).toMatch(/^script: .+; timeoutMs: .+$/);
+  });
+
+  it('a non-object argument is recorded with nulls', async () => {
+    const { handler } = setup(async () => ({ ok: true }));
+    await expect(handler(undefined)).rejects.toBeInstanceOf(ZodError);
+    const [line] = evalLines(dir);
+    expect(line).toMatchObject({ purpose: null, script: null, phase: 'args' });
+    expect(line.error).toMatch(/^\(args\): /);
   });
 });
