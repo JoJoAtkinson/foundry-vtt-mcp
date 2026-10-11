@@ -159,16 +159,25 @@ export class ForkRegistry {
     return [...this.tools.values()].map(e => e.definition).filter(d => !this.isDenied(d.name));
   }
 
+  /**
+   * Throw if FOUNDRY_MCP_TOOL_FILTER denies this name — fork or upstream. backend.ts calls
+   * it first in `call_tool`, so a filtered tool is refused, not merely hidden from the list.
+   */
+  assertAllowed(name: string): void {
+    if (this.isDenied(name))
+      throw new Error(`Tool '${name}' is disabled by FOUNDRY_MCP_TOOL_FILTER`);
+  }
+
+  /** Is this a registered fork tool? (The filter is enforced by assertAllowed/dispatch.) */
   has(name: string): boolean {
-    return this.tools.has(name) && !this.isDenied(name);
+    return this.tools.has(name);
   }
 
   /** Run a fork tool; `meta.client` (the calling wrapper) is passed to the handler and logged. */
   async dispatch(name: string, args: any, meta?: ForkCallMeta): Promise<any> {
     const entry = this.tools.get(name);
     if (!entry) throw new Error(`Unknown fork tool: ${name}`);
-    if (this.isDenied(name))
-      throw new Error(`Tool '${name}' is disabled by FOUNDRY_MCP_TOOL_FILTER`);
+    this.assertAllowed(name);
 
     const started = Date.now();
     let isWrite = false;

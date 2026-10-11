@@ -1526,6 +1526,7 @@ async function startBackend(): Promise<void> {
 
             try {
               let result: any;
+              forkRegistry.assertAllowed(name); // fork: the tool filter refuses calls too
 
               switch (name) {
                 // Character tools

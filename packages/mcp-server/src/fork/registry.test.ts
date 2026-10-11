@@ -386,3 +386,39 @@ describe('upstream write tools reach the action log (mcp-fork-1)', () => {
     expect(globToRegExp(' x ').test('x')).toBe(true);
   });
 });
+
+describe('FOUNDRY_MCP_TOOL_FILTER (mcp-fork-13)', () => {
+  afterEach(() => {
+    delete process.env.FOUNDRY_MCP_TOOL_FILTER;
+  });
+
+  it('denies by glob, hides denied fork tools, and refuses calls to any denied name', async () => {
+    process.env.FOUNDRY_MCP_TOOL_FILTER = 'dnd5e-*, generate-map';
+    const reg = new ForkRegistry(logger);
+    expect(reg.isDenied('dnd5e-create-npc')).toBe(true);
+    expect(reg.isDenied('generate-map')).toBe(true);
+    expect(reg.isDenied('generate-map-x')).toBe(false);
+    expect(reg.isDenied('eval-js')).toBe(false);
+    reg.register(DEF('dnd5e-x'), async () => 'ok', { write: false });
+    reg.register(DEF('t'), async () => 'ok', { write: false });
+    expect(reg.getToolDefinitions().map(d => d.name)).toEqual(['t']);
+    await expect(reg.dispatch('dnd5e-x', {})).rejects.toThrow(
+      "Tool 'dnd5e-x' is disabled by FOUNDRY_MCP_TOOL_FILTER"
+    );
+    // Before mcp-fork-13 has() hid denied tools and the backend still dispatched denied
+    // upstream tools by name; now has() is plain membership and assertAllowed refuses.
+    expect(reg.has('dnd5e-x')).toBe(true);
+    expect(() => reg.assertAllowed('dnd5e-create-npc')).toThrow(
+      "Tool 'dnd5e-create-npc' is disabled by FOUNDRY_MCP_TOOL_FILTER"
+    );
+    expect(() => reg.assertAllowed('get-character')).not.toThrow();
+  });
+
+  it('unset: nothing is denied', () => {
+    const reg = new ForkRegistry(logger);
+    reg.register(DEF('t'), async () => 'ok', { write: false });
+    expect(reg.isDenied('dnd5e-create-npc')).toBe(false);
+    expect(reg.has('t')).toBe(true);
+    expect(() => reg.assertAllowed('dnd5e-create-npc')).not.toThrow();
+  });
+});
