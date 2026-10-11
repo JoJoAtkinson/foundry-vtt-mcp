@@ -4,16 +4,28 @@ import { toolsKey, watchToolList } from './tool-list-watch.js';
 const A = { name: 'a', description: 'alpha', inputSchema: { type: 'object' } };
 const B = { name: 'b', description: 'beta', inputSchema: { type: 'object' } };
 
-describe('toolsKey (mcp-fork-11: the key as it was in index.ts)', () => {
-  it('pins the name:description-length key', () => {
-    expect(
-      toolsKey([
-        { name: 'b', description: 'xx' },
-        { name: 'a', description: 'y' },
-      ])
-    ).toBe('a:1|b:2');
-    expect(toolsKey([])).toBe('');
-    expect(toolsKey(undefined)).toBe('');
+describe('toolsKey', () => {
+  it('is a sha1 of the sorted [name, description, inputSchema] triples (mcp-fork-12)', () => {
+    // Before mcp-fork-12 the key was name:description-length ('a:1|b:2', '' for none).
+    const key = toolsKey([
+      { name: 'b', description: 'xx' },
+      { name: 'a', description: 'y' },
+    ]);
+    expect(key).toMatch(/^[0-9a-f]{40}$/);
+    expect(toolsKey([])).toBe(toolsKey(undefined));
+    expect(toolsKey([])).not.toBe(key);
+  });
+
+  it('changes when an inputSchema gains a property', () => {
+    const wider = {
+      ...A,
+      inputSchema: { type: 'object', properties: { specFile: { type: 'string' } } },
+    };
+    expect(toolsKey([A, B])).not.toBe(toolsKey([wider, B]));
+  });
+
+  it('changes on a same-length description edit', () => {
+    expect(toolsKey([A])).not.toBe(toolsKey([{ ...A, description: 'ALPHA' }]));
   });
 
   it('is order-independent and changes on a rename', () => {

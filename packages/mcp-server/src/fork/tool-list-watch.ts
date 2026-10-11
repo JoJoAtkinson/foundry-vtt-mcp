@@ -8,12 +8,18 @@
  * (`markServed`), and polls the backend every 30 s (a local socket round trip).
  */
 
-/** Fingerprint of a tool list, compared between polls. */
+import { createHash } from 'crypto';
+
+/**
+ * Fingerprint of a tool list, compared between polls: a sha1 of every tool's name,
+ * description and inputSchema, sorted by name — so a new schema property or a reworded
+ * description of the same length is a change too.
+ */
 export function toolsKey(tools: any[] | undefined | null): string {
-  return (tools ?? [])
-    .map(t => `${t?.name}:${String(t?.description ?? '').length}`)
-    .sort()
-    .join('|');
+  const triples = (tools ?? [])
+    .map(t => [t?.name, t?.description ?? '', t?.inputSchema ?? null])
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return createHash('sha1').update(JSON.stringify(triples)).digest('hex');
 }
 
 /**
@@ -34,8 +40,10 @@ export function watchToolList(
     if (served === null) return;
     try {
       const res = await send();
-      const key = toolsKey(res?.tools || []);
-      if (key && key !== served) {
+      const tools = res?.tools || [];
+      const key = toolsKey(tools);
+      // An empty list is a backend still starting, not a change.
+      if (tools.length && key !== served) {
         served = key;
         await mcp.sendToolListChanged();
         log('tools/list changed; notified the client');
