@@ -1,7 +1,8 @@
 /**
  * eval-js — run arbitrary JavaScript inside the Foundry client.
  *
- * The design doc rejected this on principle ("no schema, no validation, silent
+ * The design doc (pentaryn repo, context/plans/foundry-mcp-fork.md) rejected this
+ * on principle ("no schema, no validation, silent
  * failures by design"). It is included anyway, for reasons the rejection missed:
  *
  *  1. It adds no capability that does not already exist — the GM has had a
@@ -16,12 +17,11 @@
  * is the eval log plus periodically reading it — not refusing to build this.
  */
 
-import { appendFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
-import type { ForkRegistry } from '../registry.js';
+import type { ForkCallMeta, ForkRegistry } from '../registry.js';
+import { ActionLog } from '../action-log.js';
 
 const ArgsSchema = z.object({
   script: z.string().min(1),
@@ -36,8 +36,13 @@ const DEFINITION = {
     'serialized result. `game`, `canvas`, `ui` and all document classes are in scope; top-level ' +
     '`await` works. Use when no purpose-built tool covers the need — reach for a real tool first ' +
     'when one exists, because this has no schema and no validation. Every call is logged with its ' +
-    'stated purpose so recurring uses can be promoted into proper tools. Foundry documents are ' +
-    'serialized to id + name + source data; large collections are truncated.',
+    'stated purpose so recurring uses can be promoted into proper tools. Result rules: depth <=4 ' +
+    '(deeper -> "[max depth]"), arrays <=200, Map/Set/Collection <=100, `_`-keys except `_id` ' +
+    'dropped, a repeated object -> "[circular]", a top-level Document includes its full source ' +
+    '(nested ones only id + name); return plain objects with the fields you need. Pentaryn ' +
+    'worlds: module APIs are under game.pentaryn.<ns>; call game.pentaryn.describe() first ' +
+    '(index: context/foundry/README.md), and prefer pentaryn-read / pentaryn-write for a ' +
+    'namespace that has describe().',
   inputSchema: {
     type: 'object',
     properties: {
@@ -64,26 +69,38 @@ const DEFINITION = {
 export function registerEvalJs(
   registry: ForkRegistry,
   foundryClient: FoundryClient,
-  logger: Logger
+  logger: Logger,
+  actionLog: ActionLog = ActionLog.fromEnv(logger)
 ): void {
   const log = logger.child({ component: 'eval-js' });
 
-  // Dedicated log, always on — independent of PENTARYN_MCP_LOG_DIR, because the
-  // whole justification for this tool is that its usage gets reviewed.
-  const logDir = (process.env.PENTARYN_MCP_LOG_DIR ?? '').trim();
-  const evalLogPath = logDir ? join(logDir, 'eval.jsonl') : null;
-  if (evalLogPath) {
-    try {
-      mkdirSync(logDir, { recursive: true });
-    } catch {
-      /* logged on write */
-    }
-  }
+  // Dedicated 'eval' stream (eval-<YYYY-MM>.jsonl) beside the action log, written whenever
+  // PENTARYN_MCP_LOG_DIR is set, because the whole justification for this tool is
+  // that its usage gets reviewed.
 
   registry.register(
     DEFINITION,
-    async (rawArgs: unknown) => {
-      const args = ArgsSchema.parse(rawArgs);
+    async (rawArgs: unknown, meta?: ForkCallMeta) => {
+      const parsed = ArgsSchema.safeParse(rawArgs);
+      if (!parsed.success) {
+        // A rejected call is still a call: the promotion review reads this log, and a
+        // missing purpose or an out-of-range timeout is worth seeing there.
+        const raw = (rawArgs ?? {}) as { purpose?: unknown; script?: unknown };
+        actionLog.append('eval', {
+          ts: new Date().toISOString(),
+          purpose: typeof raw.purpose === 'string' ? raw.purpose : null,
+          script: typeof raw.script === 'string' ? raw.script : null,
+          ok: false,
+          phase: 'args',
+          error: parsed.error.issues
+            .map(i => `${i.path.join('.') || '(args)'}: ${i.message}`)
+            .join('; '),
+          ms: 0,
+          client: meta?.client,
+        });
+        throw parsed.error; // the original ZodError, so the thrown text is unchanged
+      }
+      const args = parsed.data;
       log.info(`eval: ${args.purpose}`);
 
       const started = Date.now();
@@ -112,27 +129,29 @@ export function registerEvalJs(
         // log read as "nothing was attempted" when the truth was "nothing got through".
         // Those calls are phase 'transport', which is not a phase Foundry can report,
         // so they stay distinguishable from a script that failed inside the world.
-        if (evalLogPath) {
-          try {
-            appendFileSync(
-              evalLogPath,
-              JSON.stringify({
-                ts: new Date().toISOString(),
-                purpose: args.purpose,
-                script: args.script, // full, never truncated — it IS the record
-                ok: thrown ? false : (result?.ok ?? false),
-                phase: thrown ? 'transport' : result?.phase,
-                error: thrown ? String((thrown as any)?.message ?? thrown) : result?.error,
-                ms: result?.ms ?? Date.now() - started,
-              }) + '\n',
-              'utf8'
-            );
-          } catch (err) {
-            log.warn(`eval log write failed: ${err}`);
-          }
-        }
+        actionLog.append('eval', {
+          ts: new Date().toISOString(),
+          purpose: args.purpose,
+          script: args.script, // full, never truncated — it IS the record
+          ok: thrown ? false : (result?.ok ?? false),
+          phase: thrown ? 'transport' : result?.phase,
+          error: thrown ? String((thrown as any)?.message ?? thrown) : result?.error,
+          timedOut: !thrown && result?.timedOut === true ? true : undefined,
+          ms: result?.ms ?? Date.now() - started,
+          client: meta?.client,
+        });
       }
     },
-    { write: true }
+    {
+      write: true,
+      // The full script is in the eval log; the action log keeps only its size.
+      logArgs: (a: any) => ({
+        purpose: a?.purpose,
+        scriptChars: String(a?.script ?? '').length,
+        timeoutMs: a?.timeoutMs,
+      }),
+    }
   );
 }
+
+export { DEFINITION as EVAL_JS_DEFINITION };

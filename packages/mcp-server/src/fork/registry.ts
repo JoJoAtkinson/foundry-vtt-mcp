@@ -12,9 +12,10 @@
  *   - deny-glob tool filtering (see FOUNDRY_MCP_TOOL_FILTER)
  */
 
-import { appendFileSync, mkdirSync } from 'fs';
-import { dirname, join } from 'path';
 import type { Logger } from '../logger.js';
+import { ActionLog } from './action-log.js';
+import { isUpstreamWrite } from './upstream-writes.js';
+import type { McpContentBlock } from './content.js';
 
 export interface ForkToolDefinition {
   name: string;
@@ -22,16 +23,53 @@ export interface ForkToolDefinition {
   inputSchema: Record<string, unknown>;
 }
 
-export type ForkToolHandler = (args: any) => Promise<any>;
+/**
+ * Whether a call is a write (logged to the action log) or a read (not logged). A
+ * predicate lets one fat tool (an `action` enum) log only its writing actions; a
+ * predicate that throws counts as a write.
+ */
+export type WriteFlag = boolean | ((args: any) => boolean);
+
+/**
+ * What a fork tool handler returns. A string is sent as one text block. An object is
+ * JSON-stringified into one text block, except:
+ *  - `summary` and `ids` are copied into the action-log line of a write;
+ *  - `__mcpContent` (non-empty, every entry a valid block) replaces the text block
+ *    entirely — the way a tool returns an image (content.ts `toMcpPayload`).
+ */
+export type ForkToolResult =
+  | string
+  | ({ summary?: string; ids?: string[]; __mcpContent?: McpContentBlock[] } & Record<
+      string,
+      unknown
+    >);
+
+/** Per-call context the backend passes beside the arguments. Handlers may ignore it. */
+export interface ForkCallMeta {
+  /** The calling wrapper process (one per Claude session); several share one backend. */
+  client?: unknown;
+}
+
+export type ForkToolHandler = (args: any, meta?: ForkCallMeta) => Promise<ForkToolResult>;
 
 interface ForkToolEntry {
   definition: ForkToolDefinition;
   handler: ForkToolHandler;
+  /** Writes are logged to the action log; reads are not. See {@link WriteFlag}. */
+  write: WriteFlag;
+  /** What the action-log line records as `args` (default: the raw args). */
+  logArgs?: (args: any) => unknown;
+}
+
+/** Options of {@link ForkRegistry.register}. */
+export interface ForkToolOptions {
+  write: WriteFlag;
   /**
-   * Writes are logged and are subject to the table-mode guard; reads are not. A predicate
-   * lets one fat tool (an `action` enum) log only its writing actions.
+   * Shape the `args` written to the action log — drop a bulky field another log already
+   * keeps (eval-js's script), or expand a reference (prompt-markers' specFile). A
+   * throwing `logArgs` falls back to the raw args. The handler always gets the raw args.
    */
-  write: boolean | ((args: any) => boolean);
+  logArgs?: (args: any) => unknown;
 }
 
 /** Truncate anything oversized so a 300-wall import logs its shape, not its coordinates. */
@@ -58,7 +96,7 @@ function sanitizeForLog(value: unknown): unknown {
  * Convert a deny-glob ("dnd5e-*", "generate-map") to a matcher. Only `*` is
  * supported — anything richer invites a regex-injection footgun for no gain.
  */
-function globToRegExp(glob: string): RegExp {
+export function globToRegExp(glob: string): RegExp {
   const escaped = glob
     .trim()
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
@@ -69,11 +107,13 @@ function globToRegExp(glob: string): RegExp {
 export class ForkRegistry {
   private tools = new Map<string, ForkToolEntry>();
   private denyPatterns: RegExp[];
-  private logPath: string | null;
   private logger: Logger;
+  /** The shared JSONL writer; tools that log their own lines (eval-js) get the same one. */
+  readonly actionLog: ActionLog;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, actionLog: ActionLog = ActionLog.fromEnv(logger)) {
     this.logger = logger.child({ component: 'ForkRegistry' });
+    this.actionLog = actionLog;
 
     const filter = (process.env.FOUNDRY_MCP_TOOL_FILTER ?? '').trim();
     this.denyPatterns = filter
@@ -84,37 +124,29 @@ export class ForkRegistry {
           .map(globToRegExp)
       : [];
 
-    const logDir = (process.env.PENTARYN_MCP_LOG_DIR ?? '').trim();
-    if (logDir) {
-      const month = new Date().toISOString().slice(0, 7); // YYYY-MM
-      this.logPath = join(logDir, `mcp-${month}.jsonl`);
-      try {
-        mkdirSync(dirname(this.logPath), { recursive: true });
-        // Resolved path goes in the startup line so an orphaned backend logging
-        // to a stale directory is visible rather than mysterious.
-        this.logger.info(`fork action log: ${this.logPath}`);
-      } catch (err) {
-        this.logger.warn(`fork action log disabled — cannot create ${logDir}: ${err}`);
-        this.logPath = null;
-      }
-    } else {
-      this.logPath = null;
-    }
-
     if (this.denyPatterns.length) {
       this.logger.info(`tool filter active: ${filter}`);
     }
   }
 
-  register(
-    definition: ForkToolDefinition,
-    handler: ForkToolHandler,
-    opts: { write: boolean | ((args: any) => boolean) }
-  ): void {
+  /**
+   * Add a fork tool. `definition` is what `tools/list` shows; `handler` gets the raw
+   * arguments (validate them yourself — zod) and returns a {@link ForkToolResult};
+   * `opts.write` decides whether a call lands in the action log and `opts.logArgs` what
+   * its line records (see {@link ForkToolOptions}). Throws on a duplicate
+   * name. Expected refusals are better returned as values than thrown: a throw becomes
+   * an MCP error with only the message.
+   */
+  register(definition: ForkToolDefinition, handler: ForkToolHandler, opts: ForkToolOptions): void {
     if (this.tools.has(definition.name)) {
       throw new Error(`Fork tool registered twice: ${definition.name}`);
     }
-    this.tools.set(definition.name, { definition, handler, write: opts.write });
+    this.tools.set(definition.name, {
+      definition,
+      handler,
+      write: opts.write,
+      ...(opts.logArgs ? { logArgs: opts.logArgs } : {}),
+    });
   }
 
   /** True if this name is denied by FOUNDRY_MCP_TOOL_FILTER. Applies to upstream tools too. */
@@ -127,15 +159,25 @@ export class ForkRegistry {
     return [...this.tools.values()].map(e => e.definition).filter(d => !this.isDenied(d.name));
   }
 
-  has(name: string): boolean {
-    return this.tools.has(name) && !this.isDenied(name);
-  }
-
-  async dispatch(name: string, args: any): Promise<any> {
-    const entry = this.tools.get(name);
-    if (!entry) throw new Error(`Unknown fork tool: ${name}`);
+  /**
+   * Throw if FOUNDRY_MCP_TOOL_FILTER denies this name — fork or upstream. backend.ts calls
+   * it first in `call_tool`, so a filtered tool is refused, not merely hidden from the list.
+   */
+  assertAllowed(name: string): void {
     if (this.isDenied(name))
       throw new Error(`Tool '${name}' is disabled by FOUNDRY_MCP_TOOL_FILTER`);
+  }
+
+  /** Is this a registered fork tool? (The filter is enforced by assertAllowed/dispatch.) */
+  has(name: string): boolean {
+    return this.tools.has(name);
+  }
+
+  /** Run a fork tool; `meta.client` (the calling wrapper) is passed to the handler and logged. */
+  async dispatch(name: string, args: any, meta?: ForkCallMeta): Promise<any> {
+    const entry = this.tools.get(name);
+    if (!entry) throw new Error(`Unknown fork tool: ${name}`);
+    this.assertAllowed(name);
 
     const started = Date.now();
     let isWrite = false;
@@ -144,9 +186,26 @@ export class ForkRegistry {
     } catch {
       isWrite = true; // a predicate that cannot decide logs — the safe side
     }
+    const logged = () => {
+      if (!entry.logArgs) return args;
+      try {
+        return entry.logArgs(args);
+      } catch {
+        return args;
+      }
+    };
     try {
-      const result = await entry.handler(args);
-      if (isWrite) this.log({ tool: name, args, ok: true, result, ms: Date.now() - started });
+      const result = await (meta ? entry.handler(args, meta) : entry.handler(args));
+      if (isWrite)
+        this.log({
+          tool: name,
+          action: args?.action,
+          args: logged(),
+          ok: true,
+          result,
+          ms: Date.now() - started,
+          client: meta?.client,
+        });
       return result;
     } catch (err: any) {
       // Failures are logged too — "why did nothing change on Tuesday" is exactly
@@ -154,41 +213,80 @@ export class ForkRegistry {
       if (isWrite) {
         this.log({
           tool: name,
-          args,
+          action: args?.action,
+          args: logged(),
           ok: false,
           error: String(err?.message ?? err),
           ms: Date.now() - started,
+          client: meta?.client,
         });
       }
       throw err;
     }
   }
 
+  /**
+   * Log a call to an upstream (non-fork) tool if it is a write (upstream-writes.ts).
+   * backend.ts calls this for every tool once the call has answered or failed; fork tools
+   * return early (dispatch already logged them), and so do reads. A fork hunk's outcome
+   * that rides on the upstream result is copied onto the line: dnd5e-add-feature's
+   * `recharge` note (src/fork/recharge.ts), so it is logged once, with the call's client.
+   */
+  auditUpstream(
+    name: string,
+    args: unknown,
+    outcome: { ok: boolean; result?: unknown; error?: string; ms: number; client?: unknown }
+  ): void {
+    if (this.tools.has(name) || !isUpstreamWrite(name)) return;
+    const recharge = (outcome.result as any)?.recharge;
+    this.log({
+      tool: name,
+      action: (args as any)?.action,
+      args,
+      ok: outcome.ok,
+      result: outcome.result,
+      ...(typeof recharge === 'string' ? { recharge } : {}),
+      ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+      ms: outcome.ms,
+      client: outcome.client,
+    });
+  }
+
   private log(entry: {
     tool: string;
+    action?: unknown;
     args: unknown;
     ok: boolean;
     result?: any;
     error?: string;
     ms: number;
+    client?: unknown;
+    recharge?: string;
   }): void {
-    if (!this.logPath) return;
+    if (!this.actionLog.enabled) return;
     try {
+      // A handler that reports failure as a value ({ok:false, phase?, code?}) is a
+      // failure in the log too, not ok:true.
+      const r = entry.result && typeof entry.result === 'object' ? entry.result : undefined;
       const line = {
         ts: new Date().toISOString(),
         tool: entry.tool,
-        action: (entry.args as any)?.action ?? undefined,
+        action: entry.action ?? undefined,
         args: sanitizeForLog(entry.args),
-        ok: entry.ok,
+        ok: entry.ok && r?.ok !== false,
+        phase: typeof r?.phase === 'string' ? r.phase : undefined,
+        code: typeof r?.code === 'string' ? r.code : undefined,
         summary: entry.ok ? entry.result?.summary : undefined,
         ids: entry.ok ? entry.result?.ids : undefined,
+        recharge: entry.recharge,
         error: entry.error,
         ms: entry.ms,
+        client: entry.client,
       };
-      appendFileSync(this.logPath, JSON.stringify(line) + '\n', 'utf8');
+      this.actionLog.append('actions', line);
     } catch (err) {
-      // Never let logging break a tool call.
-      this.logger.warn(`fork action log write failed: ${err}`);
+      // Never let logging break a tool call (a summary getter could throw).
+      this.logger.warn(`fork action log line failed: ${err}`);
     }
   }
 }

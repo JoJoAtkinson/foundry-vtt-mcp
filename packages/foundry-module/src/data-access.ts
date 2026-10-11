@@ -1,6 +1,7 @@
 import { MODULE_ID, ERROR_MESSAGES, TOKEN_DISPOSITIONS } from './constants.js';
 import { permissionManager } from './permissions.js';
 import { transactionManager } from './transaction-manager.js';
+import { DND5E_LEGACY_MOVEMENT_KEYS } from './fork/legacy-keys.js'; // fork: dnd5e 6 movement shim
 // Local type definitions to avoid shared package import issues
 interface CharacterInfo {
   id: string;
@@ -3893,9 +3894,8 @@ export class FoundryDataAccess {
       // MovementField._shim re-adds the legacy keys as *enumerable* accessors, so a walk
       // over the object would emit every speed twice (and the setters log a deprecation).
       // Detect this shape and keep only movement.speeds.
-      const DEPRECATED_DND5E_MOVEMENT_KEYS = ['walk', 'burrow', 'climb', 'fly', 'jump', 'swim'];
       const isDnd5eMovementShape =
-        keys.includes('speeds') && keys.some(k => DEPRECATED_DND5E_MOVEMENT_KEYS.includes(k));
+        keys.includes('speeds') && keys.some(k => DND5E_LEGACY_MOVEMENT_KEYS.has(k));
 
       for (const key of keys) {
         // Skip sensitive and problematic fields entirely
@@ -3914,7 +3914,7 @@ export class FoundryDataAccess {
           continue;
         }
 
-        if (isDnd5eMovementShape && DEPRECATED_DND5E_MOVEMENT_KEYS.includes(key)) {
+        if (isDnd5eMovementShape && DND5E_LEGACY_MOVEMENT_KEYS.has(key)) {
           continue;
         }
 

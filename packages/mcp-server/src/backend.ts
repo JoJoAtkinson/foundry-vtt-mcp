@@ -1516,10 +1516,17 @@ async function startBackend(): Promise<void> {
           }
 
           if (msg.method === 'call_tool') {
-            const { name, args } = (msg.params || {}) as { name: string; args?: any };
+            // fork: `client` ({pid, ppid} of the calling wrapper) reaches the action log.
+            const { name, args, client } = (msg.params || {}) as {
+              name: string;
+              args?: any;
+              client?: unknown;
+            };
+            const started = Date.now(); // fork: for the upstream-write audit below
 
             try {
               let result: any;
+              forkRegistry.assertAllowed(name); // fork: the tool filter refuses calls too
 
               switch (name) {
                 // Character tools
@@ -1768,11 +1775,19 @@ async function startBackend(): Promise<void> {
                   // fork: unknown names fall through to the additive registry,
                   // so adding a tool never grows this switch.
                   if (forkRegistry.has(name)) {
-                    result = await forkRegistry.dispatch(name, args);
+                    result = await forkRegistry.dispatch(name, args, { client });
                     break;
                   }
                   throw new Error(`Unknown tool: ${name}`);
               }
+
+              // fork: upstream write tools reach the action log (fork tools return early).
+              forkRegistry.auditUpstream(name, args, {
+                ok: true,
+                result,
+                ms: Date.now() - started,
+                client,
+              });
 
               // fork: `result.__mcpContent` passes content blocks (images) through.
               const payload = toMcpPayload(result);
@@ -1780,6 +1795,13 @@ async function startBackend(): Promise<void> {
               socket.write(JSON.stringify({ id: msg.id, result: payload }) + '\n');
             } catch (e: any) {
               const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
+              // fork: a failed upstream write is logged too.
+              forkRegistry.auditUpstream(name, args, {
+                ok: false,
+                error: errorMessage,
+                ms: Date.now() - started,
+                client,
+              });
 
               socket.write(
                 JSON.stringify({

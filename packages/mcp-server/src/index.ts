@@ -20,6 +20,8 @@ import * as fs from 'fs';
 
 import * as path from 'path';
 
+import { watchToolList } from './fork/tool-list-watch.js'; // fork: tools/list_changed poll
+
 const CONTROL_HOST = '127.0.0.1';
 
 const CONTROL_PORT = 31414;
@@ -303,18 +305,23 @@ async function startWrapper() {
     } catch {}
   }
 
-  // listChanged: a session started before the backend was rebuilt (e.g. a new fork tool) would
-  // otherwise keep the tool list it fetched at startup until the session restarts.
+  // fork: listChanged — a session started before the backend was rebuilt (a new fork tool)
+  // would otherwise keep the tool list it fetched at startup until the session restarts.
   const mcp = new Server(
     { name: config.server.name, version: config.server.version },
     { capabilities: { tools: { listChanged: true } } }
   );
-  let servedTools: string | null = null;
-  const toolsKey = (tools: any[]) =>
-    (tools ?? [])
-      .map(t => `${t?.name}:${String(t?.description ?? '').length}`)
-      .sort()
-      .join('|');
+  // fork: poll the backend's tool list and send tools/list_changed (src/fork/tool-list-watch.ts).
+  const markServed = watchToolList(
+    mcp,
+    () => backend.send('list_tools', {}),
+    30_000,
+    msg => {
+      try {
+        (backend as any).log?.(msg);
+      } catch {}
+    }
+  );
 
   // Setup cleanup handlers - cross-platform approach
 
@@ -351,7 +358,7 @@ async function startWrapper() {
         });
       } catch {}
 
-      servedTools = toolsKey(res.tools || []);
+      markServed(res.tools || []); // fork: the tool-list watch's baseline
       return { tools: res.tools || [] };
     } catch (e) {
       // Log but return empty to remain MCP-compliant
@@ -368,7 +375,12 @@ async function startWrapper() {
     const { name, arguments: args } = request.params as any;
 
     try {
-      const res = await backend.send('call_tool', { name, args: args ?? {} });
+      // fork: the wrapper's pid/ppid identify this session in the backend's action logs.
+      const res = await backend.send('call_tool', {
+        name,
+        args: args ?? {},
+        client: { pid: process.pid, ppid: process.ppid },
+      });
 
       return res;
     } catch (e: any) {
@@ -382,26 +394,6 @@ async function startWrapper() {
   const transport = new StdioServerTransport();
 
   await mcp.connect(transport);
-
-  // Poll the backend's tool list (a local socket round trip) and tell the client when it changes,
-  // so a respawned backend from a rebuilt dist/ shows its new tools without a session restart.
-  const poll = setInterval(async () => {
-    if (servedTools === null) return;
-    try {
-      const res = await backend.send('list_tools', {});
-      const key = toolsKey(res?.tools || []);
-      if (key && key !== servedTools) {
-        servedTools = key;
-        await mcp.sendToolListChanged();
-        try {
-          (backend as any).log?.('tools/list changed; notified the client');
-        } catch {}
-      }
-    } catch {
-      /* backend restarting: try again next tick */
-    }
-  }, 30_000);
-  poll.unref?.();
 }
 
 startWrapper().catch(err => {
