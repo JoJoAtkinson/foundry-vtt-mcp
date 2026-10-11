@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { ForkRegistry, type ForkToolHandler } from './registry.js';
+import { ForkRegistry, globToRegExp, type ForkToolHandler } from './registry.js';
+import { UPSTREAM_WRITE_GLOBS, isUpstreamWrite } from './upstream-writes.js';
 
 const logger: any = {
   info: vi.fn(),
@@ -268,5 +269,120 @@ describe('caller identity (mcp-fork-7)', () => {
     );
     await expect(reg.dispatch('t', {}, { client: { pid: 3, ppid: 4 } })).rejects.toThrow();
     expect(logLines(dir)[0]).toMatchObject({ ok: false, client: { pid: 3, ppid: 4 } });
+  });
+});
+
+describe('upstream write tools reach the action log (mcp-fork-1)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'reg-1-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+  });
+  afterEach(() => {
+    delete process.env.PENTARYN_MCP_LOG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a write tool is logged with its args, ok and ms', () => {
+    const reg = new ForkRegistry(logger);
+    reg.auditUpstream(
+      'delete-tokens',
+      { tokenIds: ['a'] },
+      {
+        ok: true,
+        result: { success: true },
+        ms: 3,
+        client: { pid: 1, ppid: 2 },
+      }
+    );
+    const lines = logLines(dir);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      tool: 'delete-tokens',
+      args: { tokenIds: ['a'] },
+      ok: true,
+      ms: 3,
+      client: { pid: 1, ppid: 2 },
+    });
+  });
+
+  it('a read tool is not logged', () => {
+    const reg = new ForkRegistry(logger);
+    reg.auditUpstream('get-character', {}, { ok: true, ms: 1 });
+    reg.auditUpstream('list-scenes', {}, { ok: true, ms: 1 });
+    expect(logLines(dir)).toEqual([]);
+  });
+
+  it('a registered fork tool is not logged twice', () => {
+    const reg = new ForkRegistry(logger);
+    reg.register(DEF('update-thing'), async () => 'ok', { write: true });
+    reg.auditUpstream('update-thing', {}, { ok: true, ms: 1 });
+    expect(logLines(dir)).toEqual([]);
+  });
+
+  it('a failure is logged with its error', () => {
+    const reg = new ForkRegistry(logger);
+    reg.auditUpstream('dnd5e-create-npc', { name: 'X' }, { ok: false, error: 'boom', ms: 2 });
+    expect(logLines(dir)[0]).toMatchObject({ tool: 'dnd5e-create-npc', ok: false, error: 'boom' });
+  });
+
+  it('the glob list covers the upstream write tools and none of the reads', () => {
+    const writes = [
+      'assign-actor-ownership',
+      'cancel-map-job',
+      'create-actor-from-compendium',
+      'create-campaign-dashboard',
+      'create-dsa5-character-from-archetype',
+      'create-quest-journal',
+      'delete-tokens',
+      'dnd5e-add-feature',
+      'dnd5e-add-features-from-compendium',
+      'dnd5e-create-npc',
+      'generate-map',
+      'link-quest-to-npc',
+      'manage-actors',
+      'manage-world-items',
+      'move-token',
+      'remove-actor-ownership',
+      'request-player-rolls',
+      'switch-scene',
+      'toggle-token-condition',
+      'update-quest-journal',
+      'update-token',
+      'use-item',
+      'wfrp4e-add-items',
+      'wfrp4e-update-actor',
+    ];
+    const reads = [
+      'check-comfyui-status',
+      'check-map-status',
+      'get-available-conditions',
+      'get-character',
+      'get-character-entity',
+      'get-compendium-entry-full',
+      'get-compendium-item',
+      'get-current-scene',
+      'get-token-details',
+      'get-world-info',
+      'list-actor-ownership',
+      'list-characters',
+      'list-compendium-packs',
+      'list-creatures-by-criteria',
+      'list-dsa5-archetypes',
+      'list-journals',
+      'list-scenes',
+      'search-character-items',
+      'search-compendium',
+      'search-journals',
+    ];
+    expect(writes.filter(n => !isUpstreamWrite(n))).toEqual([]);
+    expect(reads.filter(isUpstreamWrite)).toEqual([]);
+    expect(UPSTREAM_WRITE_GLOBS.length).toBeGreaterThan(0);
+  });
+
+  it('globToRegExp supports only *', () => {
+    expect(globToRegExp('a.b*').test('a.bc')).toBe(true);
+    expect(globToRegExp('a.b*').test('aXbc')).toBe(false);
+    expect(globToRegExp(' x ').test('x')).toBe(true);
   });
 });

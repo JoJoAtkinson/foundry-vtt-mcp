@@ -1522,6 +1522,7 @@ async function startBackend(): Promise<void> {
               args?: any;
               client?: unknown;
             };
+            const started = Date.now(); // fork: for the upstream-write audit below
 
             try {
               let result: any;
@@ -1779,12 +1780,27 @@ async function startBackend(): Promise<void> {
                   throw new Error(`Unknown tool: ${name}`);
               }
 
+              // fork: upstream write tools reach the action log (fork tools return early).
+              forkRegistry.auditUpstream(name, args, {
+                ok: true,
+                result,
+                ms: Date.now() - started,
+                client,
+              });
+
               // fork: `result.__mcpContent` passes content blocks (images) through.
               const payload = toMcpPayload(result);
 
               socket.write(JSON.stringify({ id: msg.id, result: payload }) + '\n');
             } catch (e: any) {
               const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
+              // fork: a failed upstream write is logged too.
+              forkRegistry.auditUpstream(name, args, {
+                ok: false,
+                error: errorMessage,
+                ms: Date.now() - started,
+                client,
+              });
 
               socket.write(
                 JSON.stringify({

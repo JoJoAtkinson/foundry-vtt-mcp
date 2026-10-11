@@ -14,6 +14,7 @@
 
 import type { Logger } from '../logger.js';
 import { ActionLog } from './action-log.js';
+import { isUpstreamWrite } from './upstream-writes.js';
 import type { McpContentBlock } from './content.js';
 
 export interface ForkToolDefinition {
@@ -95,7 +96,7 @@ function sanitizeForLog(value: unknown): unknown {
  * Convert a deny-glob ("dnd5e-*", "generate-map") to a matcher. Only `*` is
  * supported — anything richer invites a regex-injection footgun for no gain.
  */
-function globToRegExp(glob: string): RegExp {
+export function globToRegExp(glob: string): RegExp {
   const escaped = glob
     .trim()
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
@@ -213,6 +214,29 @@ export class ForkRegistry {
       }
       throw err;
     }
+  }
+
+  /**
+   * Log a call to an upstream (non-fork) tool if it is a write (upstream-writes.ts).
+   * backend.ts calls this for every tool once the call has answered or failed; fork tools
+   * return early (dispatch already logged them), and so do reads.
+   */
+  auditUpstream(
+    name: string,
+    args: unknown,
+    outcome: { ok: boolean; result?: unknown; error?: string; ms: number; client?: unknown }
+  ): void {
+    if (this.tools.has(name) || !isUpstreamWrite(name)) return;
+    this.log({
+      tool: name,
+      action: (args as any)?.action,
+      args,
+      ok: outcome.ok,
+      result: outcome.result,
+      ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+      ms: outcome.ms,
+      client: outcome.client,
+    });
   }
 
   private log(entry: {
