@@ -10,6 +10,7 @@ import { ActionLog } from './action-log.js';
 import { ForkRegistry } from './registry.js';
 import { registerEvalJs } from './tools/eval-js.js';
 import { registerPentarynRead } from './tools/pentaryn-read.js';
+import { registerPentarynWrite } from './tools/pentaryn-write.js';
 import { registerPromptMarkers } from './tools/prompt-markers.js';
 
 export { ForkRegistry } from './registry.js';
@@ -21,6 +22,7 @@ export function createForkRegistry(foundryClient: FoundryClient, logger: Logger)
   registerEvalJs(registry, foundryClient, logger, actionLog);
   registerPromptMarkers(registry, foundryClient, logger);
   registerPentarynRead(registry, foundryClient, logger);
+  registerPentarynWrite(registry, foundryClient, logger);
 
   logger.info(`fork registry: ${registry.getToolDefinitions().length} tool(s)`);
   return registry;

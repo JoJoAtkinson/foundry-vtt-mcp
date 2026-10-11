@@ -41,7 +41,8 @@ const DEFINITION = {
     'dropped, a repeated object -> "[circular]", a top-level Document includes its full source ' +
     '(nested ones only id + name); return plain objects with the fields you need. Pentaryn ' +
     'worlds: module APIs are under game.pentaryn.<ns>; call game.pentaryn.describe() first ' +
-    '(index: context/foundry/README.md).',
+    '(index: context/foundry/README.md), and prefer pentaryn-read / pentaryn-write for a ' +
+    'namespace that has describe().',
   inputSchema: {
     type: 'object',
     properties: {
