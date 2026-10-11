@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { unregisterForkHandlers } from '../../../../foundry-module/src/fork/handlers.js';
 import { ForkRegistry } from '../registry.js';
-import { PENTARYN_WRITE_DEFINITION, registerPentarynWrite } from './pentaryn-write.js';
+import { PENTARYN_WRITE_DEFINITION, collectIds, registerPentarynWrite } from './pentaryn-write.js';
 import { registerPentarynRead } from './pentaryn-read.js';
 import {
   calls,
@@ -115,6 +115,28 @@ describe('pentaryn-write', () => {
     expect(lines(dir)[0]).toMatchObject({ ok: true, ids: ['i1'] });
   });
 
+  it('a result without its own ids logs the documents it returned (dropbin.restoreResult)', async () => {
+    unregisterForkHandlers();
+    installGame(
+      withRow(
+        fakeNamespace(),
+        { path: 'restoreResult', params: [{ name: 'n', type: 'number' }], gm: true, writes: true },
+        async () => ({
+          ok: true,
+          item: { documentName: 'Item', _id: 'it1', name: 'Sword', uuid: 'Actor.a1.Item.it1' },
+          actor: { documentName: 'Actor', _id: 'a1', name: 'Talo', uuid: 'Actor.a1' },
+        })
+      )
+    );
+    const res: any = await reg.dispatch('pentaryn-write', {
+      ns: 'fake',
+      path: 'restoreResult',
+      opts: { n: 1 },
+    });
+    expect(res.ids).toEqual(['Actor.a1.Item.it1', 'Actor.a1']);
+    expect(lines(dir)[0]).toMatchObject({ ok: true, ids: ['Actor.a1.Item.it1', 'Actor.a1'] });
+  });
+
   it('a read row is refused, as a value, and logged as a failure with its code', async () => {
     const res: any = await reg.dispatch('pentaryn-write', {
       ns: 'fake',
@@ -176,5 +198,47 @@ describe('pentaryn-write', () => {
     expect(() => filtered.assertAllowed('pentaryn-write')).toThrow(
       /disabled by FOUNDRY_MCP_TOOL_FILTER/
     );
+  });
+});
+
+describe('collectIds (action-log ids from a module result)', () => {
+  it('a module ids field wins, strings only', () => {
+    expect(collectIds({ ok: true, ids: ['x', 3, 'y'], item: { uuid: 'Item.z' } })).toEqual([
+      'x',
+      'y',
+    ]);
+  });
+
+  it('reads {uuid}, {_id}, {id}, documents and arrays of them, de-duplicated', () => {
+    expect(
+      collectIds({
+        ok: true,
+        created: [{ _document: 'Item', _id: 'i1', uuid: 'Item.i1' }, { _id: 'i2' }],
+        documents: [{ id: 'abcdefghijklmnop' }, { uuid: 'Item.i1' }],
+        doc: { _document: 'Actor', _id: 'a1', name: 'A' },
+      })
+    ).toEqual(['Item.i1', 'i2', 'abcdefghijklmnop', 'a1']);
+  });
+
+  it('ignores an id that is not a Foundry id (a condition id, a count)', () => {
+    expect(collectIds({ ok: true, condition: { id: 'prone' }, n: { id: 3 } })).toEqual([]);
+  });
+
+  it('is bounded in depth and count, and never throws', () => {
+    const deep: any = { a: { b: { c: { d: { e: { uuid: 'Too.deep' } } } } } };
+    expect(collectIds(deep)).toEqual([]);
+    const many = { list: Array.from({ length: 500 }, (_, i) => ({ uuid: `Item.${i}` })) };
+    expect(collectIds(many)).toHaveLength(50);
+    const cyc: any = { uuid: 'Actor.c' };
+    cyc.self = cyc;
+    expect(collectIds(cyc)).toEqual(['Actor.c']);
+    const hostile = {
+      get bad() {
+        throw new Error('boom');
+      },
+    };
+    expect(() => collectIds(hostile)).not.toThrow();
+    expect(collectIds(null)).toEqual([]);
+    expect(collectIds('str')).toEqual([]);
   });
 });

@@ -6,6 +6,10 @@ Fixes from the 2026-10-11 live checks. Deploy both halves (server and bridge mod
 
 - `toggle-token-condition` with `active` omitted toggles the current state, as its schema always said; before, the bridge module refused it with `active must be a boolean`. Resolved in the fork's bridge-query wrapper (`src/fork/toggle-condition.ts`); no upstream file changes
 
+### Action log
+
+- `pentaryn-write` lines carry the ids of the documents the module returned when its result has no `ids` of its own (`{uuid}`, `{_id}`, a Foundry-shaped `{id}`, `documents`, arrays; depth ≤ 4, ≤ 50 ids; never throws). `dropbin.restoreResult` logs the created item and its actor instead of `ids: []`. A dry run or a refusal logs `ids: []`
+
 ---
 
 ## v0.8.3-pentaryn.2 (2026-10-11)
