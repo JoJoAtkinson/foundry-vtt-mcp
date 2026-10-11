@@ -161,6 +161,29 @@ describe('pentaryn-read', () => {
     ]);
   });
 
+  it('NOT_GM from the bridge tab is thrown and logged as NOT_GM, not INTERNAL', async () => {
+    const reg2 = new ForkRegistry(logger);
+    registerPentarynRead(
+      reg2,
+      {
+        query: async () => {
+          throw new Error(
+            'Query foundry-mcp-bridge.fork.eval failed: NOT_GM: Access denied: fork tools require a GM session.'
+          );
+        },
+      },
+      logger
+    );
+    await expect(
+      reg2.dispatch('pentaryn-read', { ns: 'fake', path: 'deep' })
+    ).rejects.toMatchObject({
+      code: 'NOT_GM',
+    });
+    expect(lines(dir)).toEqual([
+      expect.objectContaining({ tool: 'pentaryn-read', ok: false, code: 'NOT_GM' }),
+    ]);
+  });
+
   it('the description names the discovery call and the write tool', () => {
     expect(PENTARYN_READ_DEFINITION.description).toMatch(/\{ns:"\*", path:"describe"\}/);
     expect(PENTARYN_READ_DEFINITION.description).toMatch(/use pentaryn-write/);

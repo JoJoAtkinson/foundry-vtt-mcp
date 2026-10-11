@@ -279,7 +279,8 @@ export function codedError(code: string, message: string): Error {
  * Run one call through fork.eval. Module refusals come back as an `{ok: false, code}`
  * envelope; only transport-level failures throw (coded): MODULE_MISSING when the bridge
  * is not connected, TIMEOUT when the GM tab did not answer in time (the call may still
- * be running), INTERNAL when the template itself failed.
+ * be running), the query's own code when its error is `CODE: …` (NOT_GM when the bridge
+ * tab is not a GM), INTERNAL otherwise and when the template itself failed.
  */
 export async function runPentarynCall(
   foundryClient: Pick<FoundryClient, 'query'>,
@@ -306,6 +307,9 @@ export async function runPentarynCall(
         `${where} did not answer in ${timeoutMs + 2000} ms; it may still be running — re-read before retrying`
       );
     }
+    // A coded refusal from the GM tab (NOT_GM from requireGM, …) keeps its code.
+    const coded = /^([A-Z][A-Z0-9_]*): ([\s\S]*)$/.exec(msg);
+    if (coded) throw codedError(coded[1], `${where}: ${coded[2]}`);
     throw codedError('INTERNAL', `${where}: ${msg}`);
   }
   if (r?.ok !== true) {

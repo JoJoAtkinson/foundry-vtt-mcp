@@ -498,6 +498,25 @@ describe('transport failures throw coded errors', () => {
     ).rejects.toMatchObject({ code: 'TIMEOUT' });
   });
 
+  it('a coded query error keeps its code (NOT_GM from a non-GM bridge tab)', async () => {
+    const err = await runPentarynCall(
+      failing(new Error('Query foundry-mcp-bridge.fork.eval failed: NOT_GM: x')),
+      call,
+      1000
+    ).catch(e => e);
+    expect(err).toMatchObject({ code: 'NOT_GM', message: 'NOT_GM: fake.deep: x' });
+  });
+
+  it('an uncoded query error is INTERNAL', async () => {
+    await expect(
+      runPentarynCall(
+        failing(new Error('Query foundry-mcp-bridge.fork.eval failed: TypeError: boom')),
+        call,
+        1000
+      )
+    ).rejects.toMatchObject({ code: 'INTERNAL', message: 'INTERNAL: fake.deep: TypeError: boom' });
+  });
+
   it('the template itself failing -> INTERNAL', async () => {
     await expect(
       runPentarynCall(
