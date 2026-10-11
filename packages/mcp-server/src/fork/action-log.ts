@@ -4,7 +4,9 @@
  * Enabled by PENTARYN_MCP_LOG_DIR (unset → nothing is written, silently). Streams:
  *   - 'actions' → `mcp-<YYYY-MM>.jsonl`: the registry's write lines (and, later, the
  *     upstream write tools and the compact pentaryn-read lines);
- *   - 'eval'    → `eval.jsonl`: eval-js's full-script record.
+ *   - 'eval'    → `eval-<YYYY-MM>.jsonl`: eval-js's full-script record. (Before
+ *     0.8.3-pentaryn.2 it was one unrotated `eval.jsonl`; that file is left where it is,
+ *     and readers glob `eval*.jsonl`.)
  *
  * The month in a file name is the month the line is written in (a long-lived backend
  * crosses month boundaries), not the month the backend started.
@@ -55,7 +57,7 @@ export class ActionLog {
   pathFor(stream: LogStream, now: Date = new Date(), dir = this.dir): string | null {
     if (!dir) return null;
     const month = now.toISOString().slice(0, 7); // YYYY-MM
-    return stream === 'eval' ? join(dir, 'eval.jsonl') : join(dir, `mcp-${month}.jsonl`);
+    return join(dir, `${stream === 'eval' ? 'eval' : 'mcp'}-${month}.jsonl`);
   }
 
   /** Append one JSON line to a stream. Never throws. */

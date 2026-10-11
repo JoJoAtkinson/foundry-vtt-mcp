@@ -37,7 +37,8 @@ describe('ActionLog', () => {
       expect.stringMatching(/fork action log: .*mcp-\d{4}-\d{2}\.jsonl$/)
     );
     log.append('eval', { b: 2 });
-    expect(readFileSync(join(dir, 'eval.jsonl'), 'utf8')).toBe('{"b":2}\n');
+    const month = new Date().toISOString().slice(0, 7);
+    expect(readFileSync(join(dir, `eval-${month}.jsonl`), 'utf8')).toBe('{"b":2}\n');
   });
 
   it('an uncreatable directory disables the log with one warning', () => {
@@ -54,7 +55,8 @@ describe('ActionLog', () => {
 
   it('a failing append never throws and warns once per stream', () => {
     const dir = tmp();
-    mkdirSync(join(dir, 'eval.jsonl')); // appendFileSync on a directory -> EISDIR
+    const month = new Date().toISOString().slice(0, 7);
+    mkdirSync(join(dir, `eval-${month}.jsonl`)); // appendFileSync on a directory -> EISDIR
     const logger = makeLogger();
     const log = new ActionLog(logger, dir);
     log.append('eval', { a: 1 });

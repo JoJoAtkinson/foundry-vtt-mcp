@@ -69,7 +69,7 @@ export function registerEvalJs(
 ): void {
   const log = logger.child({ component: 'eval-js' });
 
-  // Dedicated 'eval' stream (eval.jsonl) beside the action log, written whenever
+  // Dedicated 'eval' stream (eval-<YYYY-MM>.jsonl) beside the action log, written whenever
   // PENTARYN_MCP_LOG_DIR is set, because the whole justification for this tool is
   // that its usage gets reviewed.
 

@@ -105,3 +105,27 @@ describe('eval-js log (characterisation, mcp-fork-5)', () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 });
+
+describe('eval log file name (python-tooling-30)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'evaljs-month-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+    vi.useFakeTimers({ toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env.PENTARYN_MCP_LOG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('rotates monthly: eval-<YYYY-MM>.jsonl, named at write time', async () => {
+    vi.setSystemTime(new Date('2026-10-31T23:59:00Z'));
+    const { handler } = setup(async () => ({ ok: true, phase: 'complete', ms: 1, result: 1 }));
+    await handler({ script: 'return 1', purpose: 'p' });
+    vi.setSystemTime(new Date('2026-11-01T00:01:00Z'));
+    await handler({ script: 'return 2', purpose: 'p' });
+    // Before python-tooling-30 both lines went to one unrotated eval.jsonl.
+    expect(readdirSync(dir).sort()).toEqual(['eval-2026-10.jsonl', 'eval-2026-11.jsonl']);
+  });
+});
