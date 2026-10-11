@@ -6,7 +6,12 @@ import { unregisterForkHandlers } from '../../../../foundry-module/src/fork/hand
 import { ForkRegistry } from '../registry.js';
 import { PENTARYN_WRITE_DEFINITION, registerPentarynWrite } from './pentaryn-write.js';
 import { registerPentarynRead } from './pentaryn-read.js';
-import { calls, evalClient, installGame } from './pentaryn-call.test.fixtures.js';
+import {
+  calls,
+  evalClient,
+  installGame,
+  useFakeEvalTimers,
+} from './pentaryn-call.test.fixtures.js';
 
 const logger: any = {
   info: vi.fn(),
@@ -25,6 +30,7 @@ function lines(dir: string): any[] {
 }
 
 describe('pentaryn-write', () => {
+  useFakeEvalTimers();
   let dir: string;
   let reg: ForkRegistry;
   let client: ReturnType<typeof evalClient>;

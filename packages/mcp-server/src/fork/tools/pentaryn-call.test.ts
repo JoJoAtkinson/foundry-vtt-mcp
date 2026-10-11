@@ -6,12 +6,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { unregisterForkHandlers } from '../../../../foundry-module/src/fork/handlers.js';
 import { buildCallScript, runPentarynCall, type PentarynCall } from './pentaryn-call.js';
-import { calls, evalClient, fakeNamespace, installGame } from './pentaryn-call.test.fixtures.js';
+import {
+  calls,
+  evalClient,
+  fakeNamespace,
+  installGame,
+  useFakeEvalTimers,
+} from './pentaryn-call.test.fixtures.js';
 
 const run = (call: Omit<PentarynCall, 'mode'> & { mode?: 'read' | 'write' }) =>
   runPentarynCall(evalClient(), { mode: 'read', ...call } as PentarynCall, 10_000);
 
 describe('pentaryn-call template', () => {
+  useFakeEvalTimers();
   beforeEach(() => {
     calls.length = 0;
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -230,6 +237,13 @@ describe('pentaryn-call template', () => {
     // `$&`-style replacement patterns in a value are not interpreted
     const c = buildCallScript({ mode: 'read', ns: 'fake', path: 'p', ref: "$& $' $`" });
     expect(JSON.parse(lit(c)).ref).toBe("$& $' $`");
+  });
+
+  it('the eval timeout runs on the fake clock and is cleared when the call answers', async () => {
+    const armed = vi.spyOn(globalThis, 'setTimeout');
+    await run({ ns: 'fake', path: 'deep' });
+    expect(armed).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('timeoutMs reaches the eval as given and the transport as +2000', async () => {

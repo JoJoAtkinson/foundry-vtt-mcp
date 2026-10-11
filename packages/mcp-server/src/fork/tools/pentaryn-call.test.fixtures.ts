@@ -3,7 +3,7 @@
  * skip it by name). A fake game.pentaryn namespace and a FoundryClient whose fork.eval is
  * the bridge module's real handler, so the call template is executed, not mocked.
  */
-import { vi } from 'vitest';
+import { afterEach, beforeEach, expect, vi } from 'vitest';
 import { registerForkHandlers } from '../../../../foundry-module/src/fork/handlers.js';
 
 export const calls: any[] = [];
@@ -93,14 +93,32 @@ export function installGame(ns = fakeNamespace()) {
   return pentaryn;
 }
 
-/** A FoundryClient whose fork.eval is the bridge module's real handler. */
+/**
+ * No real timers (blueprint test rule): the real fork.eval handler arms its timeout with
+ * setTimeout, so every suite that runs it calls this once at its top level.
+ */
+export function useFakeEvalTimers() {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+}
+
+/**
+ * A FoundryClient whose fork.eval is the bridge module's real handler. Under fake timers
+ * each answered call must leave no timer behind (the handler clears its timeout).
+ */
 export function evalClient() {
   const sent: any[] = [];
   const query = vi.fn(async (method: string, data: any, opts?: any) => {
     sent.push({ method, data, opts });
     const h = (globalThis as any).CONFIG.queries[method];
     if (!h) throw new Error(`No handler found for query: ${method}`);
-    return h(data);
+    const r = await h(data);
+    if (vi.isFakeTimers()) expect(vi.getTimerCount()).toBe(0);
+    return r;
   });
   return { query, sent };
 }

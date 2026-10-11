@@ -5,7 +5,12 @@ import { join } from 'path';
 import { unregisterForkHandlers } from '../../../../foundry-module/src/fork/handlers.js';
 import { ForkRegistry } from '../registry.js';
 import { PENTARYN_READ_DEFINITION, registerPentarynRead } from './pentaryn-read.js';
-import { calls, evalClient, installGame } from './pentaryn-call.test.fixtures.js';
+import {
+  calls,
+  evalClient,
+  installGame,
+  useFakeEvalTimers,
+} from './pentaryn-call.test.fixtures.js';
 
 const logger: any = {
   info: vi.fn(),
@@ -24,6 +29,7 @@ function lines(dir: string): any[] {
 }
 
 describe('pentaryn-read', () => {
+  useFakeEvalTimers();
   let dir: string;
   let reg: ForkRegistry;
   let client: ReturnType<typeof evalClient>;
