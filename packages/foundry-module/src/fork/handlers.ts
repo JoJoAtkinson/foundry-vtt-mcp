@@ -11,6 +11,7 @@
 const MODULE_ID = 'foundry-mcp-bridge';
 const FORK_PREFIX = `${MODULE_ID}.fork`;
 
+import { rechargeUpdate } from './recharge.js';
 import { serialize } from './serialize.js';
 
 declare const game: any;
@@ -149,12 +150,46 @@ async function handleEval(
   }
 }
 
+/**
+ * Give a feature Recharge n–6 (dnd5e-add-feature's `recharge`, mcp-fork-10). The actor is
+ * resolved exactly as the creating tool resolved it — upstream's findActorByIdentifier,
+ * which also takes a scene token id (an unlinked token's synthetic actor) — and the item
+ * by id when the tool knows it, else the last item with that name.
+ */
+async function handleApplyRecharge(
+  data: { actorIdentifier?: string; itemId?: string; featureName?: string; n?: number },
+  ctx?: QueryContext
+): Promise<{ ok: boolean; error?: string; label?: string; actorId?: string; itemId?: string }> {
+  requireGM(ctx);
+  const n = Number(data?.n);
+  if (!Number.isInteger(n) || n < 2 || n > 6) return { ok: false, error: 'n must be 2-6' };
+  const dataAccess = (window as any).foundryMCPBridge?.dataAccess;
+  if (typeof dataAccess?.findActorByIdentifier !== 'function') {
+    return { ok: false, error: 'bridge data access is not ready' };
+  }
+  const actor = dataAccess.findActorByIdentifier(String(data?.actorIdentifier ?? ''));
+  if (!actor) return { ok: false, error: 'actor not found' };
+  const item =
+    (data?.itemId ? actor.items.get(data.itemId) : undefined) ??
+    actor.items.filter((i: any) => i.name === data?.featureName).pop();
+  if (!item) return { ok: false, error: 'feature not found' };
+  await actor.updateEmbeddedDocuments('Item', [rechargeUpdate(item, n)]);
+  return {
+    ok: true,
+    label: actor.items.get(item.id)?.system?.uses?.label,
+    actorId: actor.id,
+    itemId: item.id,
+  };
+}
+
 export function registerForkHandlers(): void {
   CONFIG.queries[`${FORK_PREFIX}.eval`] = handleEval;
+  CONFIG.queries[`${FORK_PREFIX}.applyRecharge`] = handleApplyRecharge;
   guardBridgeQueries();
   console.log(`[${MODULE_ID}] fork handlers registered`);
 }
 
 export function unregisterForkHandlers(): void {
   delete CONFIG.queries[`${FORK_PREFIX}.eval`];
+  delete CONFIG.queries[`${FORK_PREFIX}.applyRecharge`];
 }
