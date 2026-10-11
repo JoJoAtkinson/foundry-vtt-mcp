@@ -6,12 +6,13 @@
  * `rechargeUpdate`.
  *
  * Kept out of add-feature.ts (an upstream file) so that file carries a 3-line call. The
- * outcome is written to the action log as its own line beside the add-feature call.
+ * outcome is not logged here: add-feature puts the note on its result as `recharge`, and
+ * the registry's upstream-write line for that call (auditUpstream) carries it, with the
+ * call's args (sanitised) and client — one line, one ActionLog.
  */
 
 import type { FoundryClient } from '../foundry-client.js';
 import type { Logger } from '../logger.js';
-import { ActionLog } from './action-log.js';
 
 export const APPLY_RECHARGE_QUERY = 'foundry-mcp-bridge.fork.applyRecharge';
 
@@ -28,40 +29,27 @@ export interface RechargeRequest {
   n: number;
 }
 
-let sharedLog: ActionLog | undefined;
-
 /**
- * Apply Recharge n–6 and say how it went, as the text add-feature appends to its message:
- * the dnd5e label ("Recharge 5–6") or `not applied (<why>)`. Never throws.
+ * Apply Recharge n–6 and say how it went, as the text add-feature appends to its message
+ * and puts on its result as `recharge`: the dnd5e label ("Recharge 5–6") or
+ * `not applied (<why>)`. Never throws.
  */
 export async function applyRecharge(
   foundryClient: Pick<FoundryClient, 'query'>,
   req: RechargeRequest,
-  logger: Logger,
-  actionLog: ActionLog = (sharedLog ??= ActionLog.fromEnv(logger))
+  logger: Logger
 ): Promise<string> {
-  const started = Date.now();
   let note: string;
-  let ok = false;
   try {
     const r: any = await foundryClient.query(APPLY_RECHARGE_QUERY, req);
     if (r?.ok === false || !r) {
       note = `not applied (${r?.error ?? 'no answer'})`;
     } else {
-      ok = true;
       note = r.label ?? `Recharge ${req.n}–6`;
     }
   } catch (err: any) {
     note = `not applied (${err?.message ?? err})`;
   }
-  actionLog.append('actions', {
-    ts: new Date().toISOString(),
-    tool: 'dnd5e-add-feature',
-    action: 'recharge',
-    args: req,
-    ok,
-    summary: note,
-    ms: Date.now() - started,
-  });
+  logger.debug(`dnd5e-add-feature recharge: ${note}`);
   return note;
 }

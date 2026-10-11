@@ -228,7 +228,9 @@ export class ForkRegistry {
   /**
    * Log a call to an upstream (non-fork) tool if it is a write (upstream-writes.ts).
    * backend.ts calls this for every tool once the call has answered or failed; fork tools
-   * return early (dispatch already logged them), and so do reads.
+   * return early (dispatch already logged them), and so do reads. A fork hunk's outcome
+   * that rides on the upstream result is copied onto the line: dnd5e-add-feature's
+   * `recharge` note (src/fork/recharge.ts), so it is logged once, with the call's client.
    */
   auditUpstream(
     name: string,
@@ -236,12 +238,14 @@ export class ForkRegistry {
     outcome: { ok: boolean; result?: unknown; error?: string; ms: number; client?: unknown }
   ): void {
     if (this.tools.has(name) || !isUpstreamWrite(name)) return;
+    const recharge = (outcome.result as any)?.recharge;
     this.log({
       tool: name,
       action: (args as any)?.action,
       args,
       ok: outcome.ok,
       result: outcome.result,
+      ...(typeof recharge === 'string' ? { recharge } : {}),
       ...(outcome.error !== undefined ? { error: outcome.error } : {}),
       ms: outcome.ms,
       client: outcome.client,
@@ -257,6 +261,7 @@ export class ForkRegistry {
     error?: string;
     ms: number;
     client?: unknown;
+    recharge?: string;
   }): void {
     if (!this.actionLog.enabled) return;
     try {
@@ -273,6 +278,7 @@ export class ForkRegistry {
         code: typeof r?.code === 'string' ? r.code : undefined,
         summary: entry.ok ? entry.result?.summary : undefined,
         ids: entry.ok ? entry.result?.ids : undefined,
+        recharge: entry.recharge,
         error: entry.error,
         ms: entry.ms,
         client: entry.client,
