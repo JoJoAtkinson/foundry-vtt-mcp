@@ -39,7 +39,7 @@ function requireGM(ctx?: { user?: { isGM?: boolean } }): void {
  * or ships megabytes. Documents collapse to a useful identity, collections to
  * their contents, and depth is capped.
  */
-function serialize(value: any, depth = 0, seen = new WeakSet()): any {
+export function serialize(value: any, depth = 0, seen = new WeakSet()): any {
   if (value === null || value === undefined) return value ?? null;
 
   const t = typeof value;
