@@ -1,7 +1,7 @@
 /**
- * Fork entry point. Everything the fork adds is constructed here, so upstream's
- * backend.ts needs exactly two one-line hunks: spread the definitions into
- * allTools, and try the registry in the switch's default case.
+ * Fork entry point. Everything the fork adds is constructed here, which keeps the
+ * upstream edits to small marked hunks (grep "fork:"); the full list, with line
+ * ranges and which ones are upstream PR candidates, is FORK.md at the repo root.
  */
 
 import type { FoundryClient } from '../foundry-client.js';

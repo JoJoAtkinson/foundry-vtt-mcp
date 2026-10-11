@@ -28,8 +28,8 @@ interface ForkToolEntry {
   definition: ForkToolDefinition;
   handler: ForkToolHandler;
   /**
-   * Writes are logged and are subject to the table-mode guard; reads are not. A predicate
-   * lets one fat tool (an `action` enum) log only its writing actions.
+   * Writes are logged to the action log; reads are not. A predicate lets one fat tool
+   * (an `action` enum) log only its writing actions.
    */
   write: boolean | ((args: any) => boolean);
 }

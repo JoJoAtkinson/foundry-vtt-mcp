@@ -13,7 +13,7 @@ Fork release (branch `pentaryn`) porting the D&D 5e paths to dnd5e 6.0.6.
 
 ### prompt-markers, transport timeout, image passthrough (fork)
 
-- New fork tool `prompt-markers` (`action`: `list | gather | crops | replace | show`) fronting the pentaryn `pentaryn-prompts` module's `CONFIG.queries`; `npc` replacements are composed server-side through the `dnd5e-create-npc` / `dnd5e-add-feature` engines; only `replace` is action-logged
+- New fork tool `prompt-markers` (`action`: `list | gather | crops | replace | show`) fronting the pentaryn `pentaryn-prompts` module's `CONFIG.queries`; `npc` replacements were first composed server-side through the `dnd5e-create-npc` / `dnd5e-add-feature` engines — since pentaryn-prompts 0.3.0 the module builds them itself (through the same bridge handlers) and the tool prints the module's readback; only `replace` is action-logged
 - `FoundryConnector.query(method, data, { timeoutMs })` — per-query transport timeout (default 10 s, clamped 1-120 s); `eval-js` now waits its own `timeoutMs` + 2 s instead of being cut at 10 s
 - Fork tools may return `{ __mcpContent: [...] }` to pass MCP content blocks (images) through the backend (`fork/content.ts`)
 - Fork registry `write` may be a predicate over the call's arguments

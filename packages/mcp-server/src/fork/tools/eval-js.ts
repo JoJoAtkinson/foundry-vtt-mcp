@@ -1,7 +1,8 @@
 /**
  * eval-js — run arbitrary JavaScript inside the Foundry client.
  *
- * The design doc rejected this on principle ("no schema, no validation, silent
+ * The design doc (pentaryn repo, context/plans/foundry-mcp-fork.md) rejected this
+ * on principle ("no schema, no validation, silent
  * failures by design"). It is included anyway, for reasons the rejection missed:
  *
  *  1. It adds no capability that does not already exist — the GM has had a
