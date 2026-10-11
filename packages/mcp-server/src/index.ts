@@ -368,7 +368,12 @@ async function startWrapper() {
     const { name, arguments: args } = request.params as any;
 
     try {
-      const res = await backend.send('call_tool', { name, args: args ?? {} });
+      // fork: the wrapper's pid/ppid identify this session in the backend's action logs.
+      const res = await backend.send('call_tool', {
+        name,
+        args: args ?? {},
+        client: { pid: process.pid, ppid: process.ppid },
+      });
 
       return res;
     } catch (e: any) {

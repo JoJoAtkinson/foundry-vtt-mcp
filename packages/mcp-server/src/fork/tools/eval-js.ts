@@ -20,7 +20,7 @@
 import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
-import type { ForkRegistry } from '../registry.js';
+import type { ForkCallMeta, ForkRegistry } from '../registry.js';
 import { ActionLog } from '../action-log.js';
 
 const ArgsSchema = z.object({
@@ -75,7 +75,7 @@ export function registerEvalJs(
 
   registry.register(
     DEFINITION,
-    async (rawArgs: unknown) => {
+    async (rawArgs: unknown, meta?: ForkCallMeta) => {
       const parsed = ArgsSchema.safeParse(rawArgs);
       if (!parsed.success) {
         // A rejected call is still a call: the promotion review reads this log, and a
@@ -91,6 +91,7 @@ export function registerEvalJs(
             .map(i => `${i.path.join('.') || '(args)'}: ${i.message}`)
             .join('; '),
           ms: 0,
+          client: meta?.client,
         });
         throw parsed.error; // the original ZodError, so the thrown text is unchanged
       }
@@ -131,6 +132,7 @@ export function registerEvalJs(
           phase: thrown ? 'transport' : result?.phase,
           error: thrown ? String((thrown as any)?.message ?? thrown) : result?.error,
           ms: result?.ms ?? Date.now() - started,
+          client: meta?.client,
         });
       }
     },

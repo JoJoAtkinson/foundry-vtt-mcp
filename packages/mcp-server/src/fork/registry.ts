@@ -162,7 +162,8 @@ export class ForkRegistry {
     return this.tools.has(name) && !this.isDenied(name);
   }
 
-  async dispatch(name: string, args: any): Promise<any> {
+  /** Run a fork tool; `meta.client` (the calling wrapper) is passed to the handler and logged. */
+  async dispatch(name: string, args: any, meta?: ForkCallMeta): Promise<any> {
     const entry = this.tools.get(name);
     if (!entry) throw new Error(`Unknown fork tool: ${name}`);
     if (this.isDenied(name))
@@ -184,7 +185,7 @@ export class ForkRegistry {
       }
     };
     try {
-      const result = await entry.handler(args);
+      const result = await (meta ? entry.handler(args, meta) : entry.handler(args));
       if (isWrite)
         this.log({
           tool: name,
@@ -193,6 +194,7 @@ export class ForkRegistry {
           ok: true,
           result,
           ms: Date.now() - started,
+          client: meta?.client,
         });
       return result;
     } catch (err: any) {
@@ -206,6 +208,7 @@ export class ForkRegistry {
           ok: false,
           error: String(err?.message ?? err),
           ms: Date.now() - started,
+          client: meta?.client,
         });
       }
       throw err;
@@ -220,6 +223,7 @@ export class ForkRegistry {
     result?: any;
     error?: string;
     ms: number;
+    client?: unknown;
   }): void {
     if (!this.actionLog.enabled) return;
     try {
@@ -238,6 +242,7 @@ export class ForkRegistry {
         ids: entry.ok ? entry.result?.ids : undefined,
         error: entry.error,
         ms: entry.ms,
+        client: entry.client,
       };
       this.actionLog.append('actions', line);
     } catch (err) {

@@ -220,3 +220,53 @@ describe('value failures and logArgs (mcp-fork-4)', () => {
     expect(logLines(dir)[0]).toMatchObject({ args: { hidden: true }, ok: false, error: 'boom' });
   });
 });
+
+describe('caller identity (mcp-fork-7)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'reg-7-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+  });
+  afterEach(() => {
+    delete process.env.PENTARYN_MCP_LOG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('meta.client lands on the line; the handler gets args unchanged plus the meta', async () => {
+    const reg = new ForkRegistry(logger);
+    const handler = vi.fn(async () => ({ summary: 's' }));
+    reg.register(DEF('t'), handler, { write: true });
+    const args = { action: 'replace' };
+    await reg.dispatch('t', args, { client: { pid: 1, ppid: 2 } });
+    await reg.dispatch('t', args);
+    expect(handler.mock.calls[0][0]).toBe(args);
+    expect(handler.mock.calls[0][1]).toEqual({ client: { pid: 1, ppid: 2 } });
+    const [withMeta, without] = logLines(dir);
+    expect(withMeta.client).toEqual({ pid: 1, ppid: 2 });
+    expect(Object.keys(withMeta)).toEqual([
+      'ts',
+      'tool',
+      'action',
+      'args',
+      'ok',
+      'summary',
+      'ms',
+      'client',
+    ]);
+    // no meta: the same keys as before mcp-fork-7
+    expect(Object.keys(without)).toEqual(['ts', 'tool', 'action', 'args', 'ok', 'summary', 'ms']);
+  });
+
+  it('the failure line carries the client too', async () => {
+    const reg = new ForkRegistry(logger);
+    reg.register(
+      DEF('t'),
+      async () => {
+        throw new Error('boom');
+      },
+      { write: true }
+    );
+    await expect(reg.dispatch('t', {}, { client: { pid: 3, ppid: 4 } })).rejects.toThrow();
+    expect(logLines(dir)[0]).toMatchObject({ ok: false, client: { pid: 3, ppid: 4 } });
+  });
+});

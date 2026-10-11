@@ -1516,7 +1516,12 @@ async function startBackend(): Promise<void> {
           }
 
           if (msg.method === 'call_tool') {
-            const { name, args } = (msg.params || {}) as { name: string; args?: any };
+            // fork: `client` ({pid, ppid} of the calling wrapper) reaches the action log.
+            const { name, args, client } = (msg.params || {}) as {
+              name: string;
+              args?: any;
+              client?: unknown;
+            };
 
             try {
               let result: any;
@@ -1768,7 +1773,7 @@ async function startBackend(): Promise<void> {
                   // fork: unknown names fall through to the additive registry,
                   // so adding a tool never grows this switch.
                   if (forkRegistry.has(name)) {
-                    result = await forkRegistry.dispatch(name, args);
+                    result = await forkRegistry.dispatch(name, args, { client });
                     break;
                   }
                   throw new Error(`Unknown tool: ${name}`);

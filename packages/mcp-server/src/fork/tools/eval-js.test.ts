@@ -192,3 +192,25 @@ describe('bad arguments (mcp-fork-17)', () => {
     expect(line.error).toMatch(/^\(args\): /);
   });
 });
+
+describe('caller identity on the eval line (mcp-fork-7)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'evaljs-7-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+  });
+  afterEach(() => {
+    delete process.env.PENTARYN_MCP_LOG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('copies meta.client onto the eval line, last', async () => {
+    const { handler } = setup(async () => ({ ok: true, phase: 'complete', ms: 1, result: 1 }));
+    await handler({ script: 'return 1', purpose: 'p' }, { client: { pid: 9, ppid: 8 } });
+    await handler({ purpose: 'p' }, { client: { pid: 9, ppid: 8 } }).catch(() => {});
+    const [ok, bad] = evalLines(dir);
+    expect(Object.keys(ok)).toEqual(['ts', 'purpose', 'script', 'ok', 'phase', 'ms', 'client']);
+    expect(ok.client).toEqual({ pid: 9, ppid: 8 });
+    expect(bad).toMatchObject({ phase: 'args', client: { pid: 9, ppid: 8 } });
+  });
+});
