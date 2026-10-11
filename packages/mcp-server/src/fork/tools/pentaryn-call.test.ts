@@ -150,6 +150,113 @@ describe('pentaryn-call template', () => {
     expect(calls).toEqual([]);
   });
 
+  describe('a param that needs a live Document is refused, not sent as a string', () => {
+    const refused = [
+      {
+        what: 'a non-ref param with a Document kind (attunement.stash)',
+        row: {
+          path: 'live.stash',
+          params: [
+            { name: 'owner', kind: 'actor', type: 'Actor', resolve: false },
+            { name: 'container', kind: 'actor', type: 'Actor', resolve: false },
+          ],
+          writes: true,
+        },
+        call: { mode: 'write' as const, opts: { owner: 'Esren', container: 'Chest' } },
+        param: 'owner',
+      },
+      {
+        what: 'a Document-typed param with no kind (journal.add)',
+        row: {
+          path: 'live.add',
+          params: [{ name: 'doc', type: 'JournalEntry|JournalEntryPage|Item', resolve: false }],
+          writes: true,
+        },
+        call: { mode: 'write' as const, opts: { doc: 'Handout' } },
+        param: 'doc',
+      },
+      {
+        what: 'a required Document param left out (movement.ghostFor)',
+        row: {
+          path: 'live.ghostFor',
+          params: [{ name: 'token', type: 'Token placeable' }],
+          writes: false,
+        },
+        call: {},
+        param: 'token',
+      },
+      {
+        what: 'a ref that is not first',
+        row: {
+          path: 'live.second',
+          params: [
+            { name: 'label', type: 'string' },
+            { name: 'ref', kind: 'actor' },
+          ],
+          writes: true,
+        },
+        call: { mode: 'write' as const, ref: 'Esren', opts: { label: 'x' } },
+        param: 'ref',
+      },
+      {
+        what: 'a first ref with resolve:false and no string form (names.sync)',
+        row: {
+          path: 'live.sync',
+          params: [
+            { name: 'ref', kind: 'actor', resolve: false },
+            { name: 'oldName', type: 'string' },
+            { name: 'newName', type: 'string' },
+          ],
+          writes: true,
+        },
+        call: { mode: 'write' as const, ref: 'Esren', opts: { oldName: 'a', newName: 'b' } },
+        param: 'ref',
+      },
+    ];
+    for (const c of refused) {
+      it(c.what, async () => {
+        reinstall(c.row);
+        const env = await run({ ns: 'fake', path: c.row.path, ...c.call });
+        expect(env).toMatchObject({ ok: false, code: 'BAD_ARGS' });
+        expect(env.reason).toMatch(
+          new RegExp(
+            `^fake\\.${c.row.path.replace('.', '\\.')} needs a live Document for ${c.param} .* eval-js only$`
+          )
+        );
+        expect(calls).toEqual([]);
+      });
+    }
+
+    it('a param whose type names a string form, and an optional one left out, still run', async () => {
+      reinstall({
+        path: 'live.slots',
+        params: [
+          { name: 'actor', kind: 'actor', type: 'Actor|uuid|id|exact name', resolve: false },
+        ],
+        writes: false,
+      });
+      expect(await run({ ns: 'fake', path: 'live.slots', opts: { actor: 'Esren' } })).toMatchObject(
+        {
+          ok: true,
+        }
+      );
+      reinstall({
+        path: 'live.pins',
+        params: [{ name: 'scene', type: 'Scene', optional: true }],
+        writes: false,
+      });
+      expect(await run({ ns: 'fake', path: 'live.pins' })).toMatchObject({ ok: true });
+      expect(await run({ ns: 'fake', path: 'live.pins', opts: { scene: 'S1' } })).toMatchObject({
+        ok: false,
+        code: 'BAD_ARGS',
+      });
+      expect(calls).toEqual([
+        ['live.slots', 'Esren'],
+        ['live.pins', undefined],
+      ]);
+    });
+  });
+
   it("a write row's own fail() is returned as a value with its code copied up", async () => {
     const env = await run({ mode: 'write', ns: 'fake', path: 'refuse' });
     expect(env).toEqual({

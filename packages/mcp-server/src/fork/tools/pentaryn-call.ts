@@ -25,8 +25,16 @@
  *   - any other param                  ← `opts[<its name>]` (e.g. rules.search(query, opts):
  *     `{opts: {query: "grapple", limit: 3}}`)
  * Opts keys left over on a row without an opts param, or a `ref` on a row without one, are
- * refused with BAD_ARGS. A param that needs a live Document (journal.add's `doc`) cannot
- * be passed as JSON: those rows stay eval-js-only.
+ * refused with BAD_ARGS. A param that needs a live Document cannot be passed as JSON, so a
+ * call that would fill one is refused with BAD_ARGS ('needs a live Document — eval-js only')
+ * before it runs. A param needs one when it is a Document (a `kind` the kit resolves, a
+ * `type` made only of Document class names such as "Actor" or "JournalEntry|Item", or a
+ * `ref`) and the kit does not resolve it (only a FIRST `ref` without resolve:false is
+ * resolved) — unless its `type` names a string form (uuid, id, name, string), which is how
+ * a row says it resolves strings itself (attunement's "Actor|uuid|id|exact name"). An
+ * optional one the call leaves out is fine. journal.add(doc), attunement.stash(owner, …)
+ * and names.sync(ref, …) are refused this way (names.sync resolves strings but does not
+ * say so in its manifest yet).
  *
  * The result travels back as JSON text, made plain in the browser (Documents → {_document,
  * _id, name, uuid}; cycles, Maps/Sets/Collections, depth ≤ 12, arrays ≤ 200), because the
@@ -194,6 +202,29 @@ if (call.mode === 'write' && (call.dryRun || call.opts?.dryRun) && !takesDryRun)
   return fail('BAD_ARGS', where + ' has no dry run; leave dryRun out to run it for real');
 }
 const bag = { ...(call.opts ?? {}), ...(call.dryRun ? { dryRun: true } : {}) };
+const DOC_KINDS = ['actor', 'token', 'item', 'scene', 'user', 'journal', 'message', 'macro', 'region',
+  'combat', 'table', 'folder', 'playlist'];
+const DOC_TYPES = ['Actor', 'Token', 'Item', 'Scene', 'User', 'JournalEntry', 'JournalEntryPage', 'ChatMessage',
+  'Macro', 'Region', 'Combat', 'Combatant', 'RollTable', 'Folder', 'Playlist', 'Wall', 'Tile', 'Drawing',
+  'AmbientLight', 'AmbientSound', 'MeasuredTemplate', 'Note', 'Cards', 'Adventure', 'ActiveEffect'];
+const STRING_FORMS = ['uuid', 'id', 'name', 'string'];
+const typeText = p => (typeof p?.type === 'string' ? p.type : '');
+const isDocType = p => {
+  const alts = typeText(p).split('|').map(a => a.trim()).filter(Boolean);
+  return alts.length > 0 && alts.every(a => DOC_TYPES.includes(a.split(' ')[0]));
+};
+const takesString = p => typeText(p).toLowerCase().split(/[^a-z0-9_]+/).some(w => STRING_FORMS.includes(w));
+const needsDoc = (p, i) => {
+  if (p?.name === 'ref' && i === 0 && p.resolve !== false) return false;
+  const doc = p?.name === 'ref' || DOC_KINDS.includes(p?.kind) || isDocType(p);
+  return doc && !takesString(p);
+};
+const given = p => (p?.name === 'ref' ? call.ref !== undefined : Object.hasOwn(bag, p?.name));
+const live = params.find((p, i) => needsDoc(p, i) && (!p.optional || given(p)));
+if (live) {
+  return fail('BAD_ARGS', where + ' needs a live Document for ' + live.name + ' (' + (typeText(live) || live.kind || 'ref') +
+    ') — eval-js only');
+}
 const taken = new Set();
 let optsAt = -1;
 const args = params.map((p, i) => {
