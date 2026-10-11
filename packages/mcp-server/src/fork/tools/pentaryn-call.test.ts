@@ -12,6 +12,7 @@ import {
   fakeNamespace,
   installGame,
   useFakeEvalTimers,
+  withRow,
 } from './pentaryn-call.test.fixtures.js';
 
 const run = (call: Omit<PentarynCall, 'mode'> & { mode?: 'read' | 'write' }) =>
@@ -66,6 +67,65 @@ describe('pentaryn-call template', () => {
       path: 'store.set',
       result: { ok: true, dryRun: true, ids: [] },
     });
+  });
+
+  /** A walls.run-shaped row: a write with an opts param and no dry run. */
+  const NO_DRY_RUN = {
+    path: 'batch.run',
+    params: [
+      {
+        name: 'opts',
+        optional: true,
+        type: '{ sceneId?, backend? }',
+        doc: 'sceneId: default the viewed scene',
+      },
+    ],
+    gm: true,
+    writes: true,
+    doc: 'runs the batch',
+  };
+  const reinstall = (row: Record<string, unknown>) => {
+    unregisterForkHandlers();
+    installGame(
+      withRow(fakeNamespace(), row, async (opts: any) => {
+        calls.push([row.path, opts]);
+        return { ok: true, ids: ['w1'] };
+      })
+    );
+  };
+
+  it('dryRun on a write row without a dry run is BAD_ARGS and the row never runs', async () => {
+    reinstall(NO_DRY_RUN);
+    for (const ask of [{ dryRun: true }, { opts: { dryRun: true } }]) {
+      const env = await run({ mode: 'write', ns: 'fake', path: 'batch.run', ...ask });
+      expect(env).toMatchObject({ ok: false, code: 'BAD_ARGS' });
+      expect(env.reason).toMatch(/^fake\.batch\.run has no dry run/);
+    }
+    expect(calls).toEqual([]);
+    // without dryRun the same row runs
+    expect(await run({ mode: 'write', ns: 'fake', path: 'batch.run' })).toMatchObject({ ok: true });
+    expect(calls).toEqual([['batch.run', {}]]);
+  });
+
+  it('a param whose type names dryRun (importer.import) gets it', async () => {
+    reinstall({
+      path: 'bulk.import',
+      params: [
+        {
+          name: 'options',
+          type: 'ImportOptions',
+          optional: true,
+          resolve: false,
+          doc: '{ path?, dryRun?, only?: slug[], force? }',
+        },
+      ],
+      gm: true,
+      writes: true,
+      doc: 'importer-shaped',
+    });
+    const env = await run({ mode: 'write', ns: 'fake', path: 'bulk.import', dryRun: true });
+    expect(env.ok).toBe(true);
+    expect(calls).toEqual([['bulk.import', { dryRun: true }]]);
   });
 
   it("a write row's own fail() is returned as a value with its code copied up", async () => {

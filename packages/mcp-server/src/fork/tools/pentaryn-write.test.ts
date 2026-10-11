@@ -9,8 +9,10 @@ import { registerPentarynRead } from './pentaryn-read.js';
 import {
   calls,
   evalClient,
+  fakeNamespace,
   installGame,
   useFakeEvalTimers,
+  withRow,
 } from './pentaryn-call.test.fixtures.js';
 
 const logger: any = {
@@ -74,6 +76,35 @@ describe('pentaryn-write', () => {
     });
   });
 
+  it('dryRun on a row without one is refused, logged as BAD_ARGS, and nothing runs', async () => {
+    unregisterForkHandlers();
+    installGame(
+      withRow(
+        fakeNamespace(),
+        {
+          path: 'batch.run',
+          params: [{ name: 'opts', type: '{ sceneId? }' }],
+          gm: true,
+          writes: true,
+        },
+        async (opts: any) => {
+          calls.push(['batch.run', opts]);
+          return { ok: true, ids: ['w1'] };
+        }
+      )
+    );
+    const res: any = await reg.dispatch('pentaryn-write', {
+      ns: 'fake',
+      path: 'batch.run',
+      dryRun: true,
+    });
+    expect(calls).toEqual([]);
+    expect(res).toMatchObject({ ok: false, code: 'BAD_ARGS', ids: [] });
+    expect(res.reason).toMatch(/has no dry run/);
+    expect(res.summary).toBe('fake.batch.run (dry run) — BAD_ARGS');
+    expect(lines(dir)[0]).toMatchObject({ ok: false, code: 'BAD_ARGS' });
+  });
+
   it('a real run carries the module ids', async () => {
     const res: any = await reg.dispatch('pentaryn-write', {
       ns: 'fake',
@@ -133,6 +164,7 @@ describe('pentaryn-write', () => {
     const d = PENTARYN_WRITE_DEFINITION.description;
     expect(d).toMatch(/NOT_FOUND, AMBIGUOUS, BAD_ARGS, NOT_GM, REFUSED, CONFLICT/);
     expect(d).toMatch(/dryRun:true/);
+    expect(d).toMatch(/on any other row it is BAD_ARGS/);
     expect(d).toMatch(/use pentaryn-read/);
   });
 

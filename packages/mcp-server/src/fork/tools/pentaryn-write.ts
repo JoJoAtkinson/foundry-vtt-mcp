@@ -19,7 +19,8 @@ const DEFINITION = {
     'Call a write method (describe().methods[].writes === true) of a Pentaryn blueprint module ' +
     "as the GM: game.pentaryn.<ns>.<path>. Returns the module's {ok, …} or {ok:false, code, " +
     'reason} — NOT_FOUND, AMBIGUOUS, BAD_ARGS, NOT_GM, REFUSED, CONFLICT — never a throw for an ' +
-    'expected refusal. dryRun:true where the row supports it (bulk rows; run it first). `ref` is ' +
+    'expected refusal. dryRun:true where the row declares one (a param type naming dryRun, ' +
+    'e.g. importer.import; run it first); on any other row it is BAD_ARGS. `ref` is ' +
     'resolved by the module, never a substring. Every call is written to the action log with ' +
     'its arguments. Read rows are refused with BAD_ARGS: use pentaryn-read; discover rows with ' +
     'pentaryn-read {ns:"*", path:"describe"}.',
@@ -29,7 +30,9 @@ const DEFINITION = {
       ...CALL_PROPERTIES,
       dryRun: {
         type: 'boolean',
-        description: 'Merged into opts as dryRun:true (default false): report what would change.',
+        description:
+          'Merged into opts as dryRun:true (default false): report what would change. A row ' +
+          'without a dry run refuses it with BAD_ARGS instead of running for real.',
       },
     },
     required: ['ns', 'path'],

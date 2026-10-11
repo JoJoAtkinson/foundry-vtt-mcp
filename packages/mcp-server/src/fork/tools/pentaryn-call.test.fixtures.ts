@@ -28,6 +28,7 @@ export function fakeNamespace() {
           params: [{ name: 'ref', kind: 'actor' }, { name: 'opts' }],
           gm: true,
           writes: true,
+          dryRun: true, // the kit row field the template honours (open for the kit lane)
           doc: 'set',
         },
         {
@@ -77,6 +78,20 @@ export function fakeNamespace() {
     },
     refuse: async () => ({ ok: false, code: 'CONFLICT', reason: 'already running' }),
   };
+  return ns;
+}
+
+/** Add one row (and its implementation at `row.path`) to a fake namespace's describe(). */
+export function withRow(ns: any, row: Record<string, unknown>, impl: (...a: any[]) => unknown) {
+  const base = ns.describe;
+  ns.describe = () => {
+    const d = base();
+    return { ...d, methods: [...d.methods, row] };
+  };
+  const parts = String(row.path).split('.');
+  let node = ns;
+  for (const k of parts.slice(0, -1)) node = node[k] ??= {};
+  node[parts.at(-1)!] = impl;
   return ns;
 }
 

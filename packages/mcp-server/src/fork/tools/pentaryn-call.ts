@@ -17,6 +17,10 @@
  *   - a param named `ref`              ← the call's `ref`
  *   - a param named `opts` / `options` ← the call's `opts` (+ `dryRun: true` from the write
  *     tool) minus any keys taken positionally
+ * A dry run (the write tool's `dryRun`, or a truthy `opts.dryRun`) is forwarded only to a row
+ * that declares one: `row.dryRun === true` (a kit field, not yet in kit 1.0.2), or a param
+ * whose type or doc names `dryRun` (importer.import's options). Any other write row refuses
+ * it with BAD_ARGS before it runs: walls.run(opts) would ignore the flag and run for real.
  *   - any other param                  ← `opts[<its name>]` (e.g. rules.search(query, opts):
  *     `{opts: {query: "grapple", limit: 3}}`)
  * Opts keys left over on a row without an opts param, or a `ref` on a row without one, are
@@ -178,6 +182,11 @@ if (typeof fn !== 'function') return fail('INTERNAL', where + ' is described but
 
 const params = Array.isArray(row.params) ? row.params : [];
 const names = params.map(p => p?.name);
+const takesDryRun = row.dryRun === true ||
+  params.some(p => p?.name === 'dryRun' || (String(p?.type ?? '') + ' ' + String(p?.doc ?? '')).includes('dryRun'));
+if (call.mode === 'write' && (call.dryRun || call.opts?.dryRun) && !takesDryRun) {
+  return fail('BAD_ARGS', where + ' has no dry run; leave dryRun out to run it for real');
+}
 const bag = { ...(call.opts ?? {}), ...(call.dryRun ? { dryRun: true } : {}) };
 const taken = new Set();
 let optsAt = -1;
