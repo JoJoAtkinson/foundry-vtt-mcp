@@ -17,12 +17,11 @@
  * is the eval log plus periodically reading it — not refusing to build this.
  */
 
-import { appendFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { ForkRegistry } from '../registry.js';
+import { ActionLog } from '../action-log.js';
 
 const ArgsSchema = z.object({
   script: z.string().min(1),
@@ -65,21 +64,14 @@ const DEFINITION = {
 export function registerEvalJs(
   registry: ForkRegistry,
   foundryClient: FoundryClient,
-  logger: Logger
+  logger: Logger,
+  actionLog: ActionLog = ActionLog.fromEnv(logger)
 ): void {
   const log = logger.child({ component: 'eval-js' });
 
-  // Dedicated log, always on — independent of PENTARYN_MCP_LOG_DIR, because the
-  // whole justification for this tool is that its usage gets reviewed.
-  const logDir = (process.env.PENTARYN_MCP_LOG_DIR ?? '').trim();
-  const evalLogPath = logDir ? join(logDir, 'eval.jsonl') : null;
-  if (evalLogPath) {
-    try {
-      mkdirSync(logDir, { recursive: true });
-    } catch {
-      /* logged on write */
-    }
-  }
+  // Dedicated 'eval' stream (eval.jsonl) beside the action log, written whenever
+  // PENTARYN_MCP_LOG_DIR is set, because the whole justification for this tool is
+  // that its usage gets reviewed.
 
   registry.register(
     DEFINITION,
@@ -113,25 +105,15 @@ export function registerEvalJs(
         // log read as "nothing was attempted" when the truth was "nothing got through".
         // Those calls are phase 'transport', which is not a phase Foundry can report,
         // so they stay distinguishable from a script that failed inside the world.
-        if (evalLogPath) {
-          try {
-            appendFileSync(
-              evalLogPath,
-              JSON.stringify({
-                ts: new Date().toISOString(),
-                purpose: args.purpose,
-                script: args.script, // full, never truncated — it IS the record
-                ok: thrown ? false : (result?.ok ?? false),
-                phase: thrown ? 'transport' : result?.phase,
-                error: thrown ? String((thrown as any)?.message ?? thrown) : result?.error,
-                ms: result?.ms ?? Date.now() - started,
-              }) + '\n',
-              'utf8'
-            );
-          } catch (err) {
-            log.warn(`eval log write failed: ${err}`);
-          }
-        }
+        actionLog.append('eval', {
+          ts: new Date().toISOString(),
+          purpose: args.purpose,
+          script: args.script, // full, never truncated — it IS the record
+          ok: thrown ? false : (result?.ok ?? false),
+          phase: thrown ? 'transport' : result?.phase,
+          error: thrown ? String((thrown as any)?.message ?? thrown) : result?.error,
+          ms: result?.ms ?? Date.now() - started,
+        });
       }
     },
     { write: true }

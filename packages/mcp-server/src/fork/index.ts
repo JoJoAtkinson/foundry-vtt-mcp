@@ -6,6 +6,7 @@
 
 import type { FoundryClient } from '../foundry-client.js';
 import type { Logger } from '../logger.js';
+import { ActionLog } from './action-log.js';
 import { ForkRegistry } from './registry.js';
 import { registerEvalJs } from './tools/eval-js.js';
 import { registerPromptMarkers } from './tools/prompt-markers.js';
@@ -13,9 +14,10 @@ import { registerPromptMarkers } from './tools/prompt-markers.js';
 export { ForkRegistry } from './registry.js';
 
 export function createForkRegistry(foundryClient: FoundryClient, logger: Logger): ForkRegistry {
-  const registry = new ForkRegistry(logger);
+  const actionLog = ActionLog.fromEnv(logger);
+  const registry = new ForkRegistry(logger, actionLog);
 
-  registerEvalJs(registry, foundryClient, logger);
+  registerEvalJs(registry, foundryClient, logger, actionLog);
   registerPromptMarkers(registry, foundryClient, logger);
 
   logger.info(`fork registry: ${registry.getToolDefinitions().length} tool(s)`);

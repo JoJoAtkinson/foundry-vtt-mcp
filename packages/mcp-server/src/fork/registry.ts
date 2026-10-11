@@ -12,9 +12,8 @@
  *   - deny-glob tool filtering (see FOUNDRY_MCP_TOOL_FILTER)
  */
 
-import { appendFileSync, mkdirSync } from 'fs';
-import { dirname, join } from 'path';
 import type { Logger } from '../logger.js';
+import { ActionLog } from './action-log.js';
 import type { McpContentBlock } from './content.js';
 
 export interface ForkToolDefinition {
@@ -94,11 +93,13 @@ function globToRegExp(glob: string): RegExp {
 export class ForkRegistry {
   private tools = new Map<string, ForkToolEntry>();
   private denyPatterns: RegExp[];
-  private logPath: string | null;
   private logger: Logger;
+  /** The shared JSONL writer; tools that log their own lines (eval-js) get the same one. */
+  readonly actionLog: ActionLog;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, actionLog: ActionLog = ActionLog.fromEnv(logger)) {
     this.logger = logger.child({ component: 'ForkRegistry' });
+    this.actionLog = actionLog;
 
     const filter = (process.env.FOUNDRY_MCP_TOOL_FILTER ?? '').trim();
     this.denyPatterns = filter
@@ -108,23 +109,6 @@ export class ForkRegistry {
           .filter(Boolean)
           .map(globToRegExp)
       : [];
-
-    const logDir = (process.env.PENTARYN_MCP_LOG_DIR ?? '').trim();
-    if (logDir) {
-      const month = new Date().toISOString().slice(0, 7); // YYYY-MM
-      this.logPath = join(logDir, `mcp-${month}.jsonl`);
-      try {
-        mkdirSync(dirname(this.logPath), { recursive: true });
-        // Resolved path goes in the startup line so an orphaned backend logging
-        // to a stale directory is visible rather than mysterious.
-        this.logger.info(`fork action log: ${this.logPath}`);
-      } catch (err) {
-        this.logger.warn(`fork action log disabled — cannot create ${logDir}: ${err}`);
-        this.logPath = null;
-      }
-    } else {
-      this.logPath = null;
-    }
 
     if (this.denyPatterns.length) {
       this.logger.info(`tool filter active: ${filter}`);
@@ -204,7 +188,7 @@ export class ForkRegistry {
     error?: string;
     ms: number;
   }): void {
-    if (!this.logPath) return;
+    if (!this.actionLog.enabled) return;
     try {
       const line = {
         ts: new Date().toISOString(),
@@ -217,10 +201,10 @@ export class ForkRegistry {
         error: entry.error,
         ms: entry.ms,
       };
-      appendFileSync(this.logPath, JSON.stringify(line) + '\n', 'utf8');
+      this.actionLog.append('actions', line);
     } catch (err) {
-      // Never let logging break a tool call.
-      this.logger.warn(`fork action log write failed: ${err}`);
+      // Never let logging break a tool call (a summary getter could throw).
+      this.logger.warn(`fork action log line failed: ${err}`);
     }
   }
 }
