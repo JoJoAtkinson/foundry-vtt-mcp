@@ -2,8 +2,10 @@
  * Fork query handlers — module side.
  *
  * Upstream's module dispatch (`CONFIG.queries`) is already a generic name-keyed
- * registry, so the fork registers into it from here and never edits
- * data-access.ts (10k+ lines, the main rebase hazard).
+ * registry, so the fork's query handlers register into it from here instead of
+ * growing data-access.ts (10k+ lines, the main rebase hazard); the remaining
+ * data-access.ts edits are the dnd5e 6 shims and request-player-rolls fixes
+ * listed in FORK.md.
  *
  * Everything here runs inside a logged-in GM's browser session.
  */
