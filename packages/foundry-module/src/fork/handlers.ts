@@ -108,7 +108,13 @@ async function handleEval(
     return { ok: false, phase: 'compile', error: String(err?.message ?? err) };
   }
 
-  const timeoutMs = Math.min(Math.max(data.timeoutMs ?? 10_000, 1_000), 60_000);
+  // A non-numeric timeoutMs (string, NaN, object) would become NaN, which setTimeout runs
+  // as 0 — an immediate timeout. Fall back to the 10 s default instead (rob-3).
+  const requested = Number(data.timeoutMs ?? 10_000);
+  const timeoutMs = Math.min(
+    Math.max(Number.isFinite(requested) ? requested : 10_000, 1_000),
+    60_000
+  );
 
   // The timer is cleared however the race ends, so a fast script leaves nothing pending
   // in the GM tab; a timeout is flagged, because the script itself cannot be stopped.
