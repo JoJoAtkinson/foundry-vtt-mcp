@@ -189,6 +189,15 @@ describe('pentaryn-read', () => {
     expect(PENTARYN_READ_DEFINITION.description).toMatch(/use pentaryn-write/);
   });
 
+  it('the description lists no module that publishes describe() as eval-js only (wave 4)', () => {
+    const d = PENTARYN_READ_DEFINITION.description;
+    for (const ns of ['combat', 'riders', 'transform', 'aoe', 'ties', 'prompts']) {
+      expect(d).not.toMatch(new RegExp('\\b' + ns + '\\b'));
+    }
+    expect(d).toMatch(/chain alias has none \(call senses chain\.\* rows\)/);
+    expect(d).toMatch(/without describe\(\) is eval-js only/);
+  });
+
   it('FOUNDRY_MCP_TOOL_FILTER hides and refuses it', async () => {
     process.env.FOUNDRY_MCP_TOOL_FILTER = 'pentaryn-read';
     const filtered = new ForkRegistry(logger);
