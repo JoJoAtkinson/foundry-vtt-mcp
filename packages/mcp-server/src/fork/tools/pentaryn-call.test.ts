@@ -359,6 +359,34 @@ describe('pentaryn-call template', () => {
     expect(env.writes).toMatchObject({ 'store.list': false, 'store.set': true, inspect: false });
   });
 
+  it('rob-5: a null/non-object describe() row is skipped — unknown path is NOT_FOUND, not INTERNAL', async () => {
+    unregisterForkHandlers();
+    const ns = fakeNamespace();
+    const describe0 = ns.describe;
+    ns.describe = () => {
+      const d = describe0();
+      return { ...d, methods: [null, ...d.methods, undefined, 'store.list'] };
+    };
+    installGame(ns);
+    const env = await run({ ns: 'fake', path: 'nope' });
+    expect(env).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect(env.paths).toEqual([
+      'store.list',
+      'store.set',
+      'search',
+      'deep',
+      'actor',
+      'boom',
+      'refuse',
+      'describe',
+      'inspect',
+    ]);
+    expect(await run({ ns: 'fake', path: 'store.list', ref: 'Esren' })).toMatchObject({
+      ok: true,
+      result: { rows: ['Esren'] },
+    });
+  });
+
   it('selftest is listed when the namespace has one', async () => {
     unregisterForkHandlers();
     const ns = fakeNamespace();

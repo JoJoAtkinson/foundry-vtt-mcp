@@ -170,7 +170,7 @@ if (!api || typeof api !== 'object' || typeof api.contract !== 'string' || typeo
 }
 let d;
 try { d = api.describe(); } catch (e) { return fail(codeOf(e), call.ns + '.describe() failed: ' + reasonOf(e)); }
-const rows = Array.isArray(d?.methods) ? d.methods : [];
+const rows = (Array.isArray(d?.methods) ? d.methods : []).filter(m => m && typeof m === 'object');
 let row = rows.find(m => m?.path === call.path);
 if (!row && Object.hasOwn(KIT, call.path) && typeof api[call.path] === 'function') {
   row = { path: call.path, params: KIT[call.path], writes: false };
