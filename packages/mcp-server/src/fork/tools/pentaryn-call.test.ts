@@ -441,6 +441,23 @@ describe('pentaryn-call template', () => {
     });
   });
 
+  it('fork-edge-6: root describe refuses a ref or opts; root inspect still takes both', async () => {
+    const refused = {
+      ok: false,
+      ns: '*',
+      path: 'describe',
+      code: 'BAD_ARGS',
+      reason: 'game.pentaryn.describe takes no ref or opts',
+    };
+    expect(await run({ ns: '*', path: 'describe', ref: 'Esren' })).toEqual(refused);
+    expect(await run({ ns: '*', path: 'describe', opts: { depth: 2 } })).toEqual(refused);
+    expect(await run({ ns: '*', path: 'describe', opts: {} })).toMatchObject({ ok: true });
+    expect(await run({ ns: '*', path: 'inspect', ref: 'Esren', opts: { depth: 2 } })).toMatchObject({
+      ok: true,
+      result: { fake: { ref: 'Esren' } },
+    });
+  });
+
   it('inspect with a ref works on read and is BAD_ARGS on write', async () => {
     expect(await run({ ns: 'fake', path: 'inspect', ref: 'Esren' })).toMatchObject({
       ok: true,

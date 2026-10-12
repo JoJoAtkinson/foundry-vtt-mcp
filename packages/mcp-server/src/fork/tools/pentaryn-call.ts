@@ -25,7 +25,8 @@
  *   - any other param                  ← `opts[<its name>]` (e.g. rules.search(query, opts):
  *     `{opts: {query: "grapple", limit: 3}}`)
  * Opts keys left over on a row without an opts param, or a `ref` on a row without one, are
- * refused with BAD_ARGS. A param that needs a live Document cannot be passed as JSON, so a
+ * refused with BAD_ARGS. The root describe ({ns: "*", path: "describe"}) takes neither: a `ref`
+ * or non-empty `opts` there is BAD_ARGS too (fork-edge-6); the root inspect takes both. A param that needs a live Document cannot be passed as JSON, so a
  * call that would fill one is refused with BAD_ARGS ('needs a live Document — eval-js only')
  * before it runs. A param needs one when it is a Document (a `kind` the kit resolves, a
  * `type` made only of Document class names such as "Actor" or "JournalEntry|Item", or a
@@ -155,6 +156,9 @@ if (call.ns === '*') {
       { paths: have, namespaces: nsList() });
   }
   if (call.mode !== 'read') return fail('BAD_ARGS', 'game.pentaryn.' + call.path + ' is a read; use pentaryn-read');
+  if (call.path === 'describe' && (call.ref !== undefined || Object.keys(call.opts ?? {}).length > 0)) {
+    return fail('BAD_ARGS', 'game.pentaryn.describe takes no ref or opts');
+  }
   try {
     const result = await (call.path === 'describe' ? root.describe() : root.inspect(call.ref, call.opts ?? {}));
     return out({ ok: true, ns: '*', path: call.path, result });
