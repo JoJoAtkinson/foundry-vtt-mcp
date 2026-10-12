@@ -77,8 +77,7 @@ export function registerPentarynWrite(
         ids,
       };
     },
-    // Logged in full: the args are the record of what was asked (sanitizeForLog caps them).
-    { write: true, logArgs: (a: any) => a }
+    { write: true } // logged in full: the args are the record of what was asked (sanitizeForLog caps them)
   );
 }
 
