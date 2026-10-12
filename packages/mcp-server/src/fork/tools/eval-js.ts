@@ -22,6 +22,7 @@ import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { ForkCallMeta, ForkRegistry } from '../registry.js';
 import type { ActionLog } from '../action-log.js';
+import { EVAL_DEFAULT_TIMEOUT_MS, EVAL_QUERY, EVAL_TRANSPORT_MARGIN_MS } from './pentaryn-call.js';
 
 const ArgsSchema = z.object({
   script: z.string().min(1),
@@ -112,11 +113,11 @@ export function registerEvalJs(
 
       try {
         result = await foundryClient.query(
-          'foundry-mcp-bridge.fork.eval',
+          EVAL_QUERY,
           { script: args.script, timeoutMs: args.timeoutMs },
           // The transport must outlive the in-browser timeout, or a 30 s script is cut at
           // the connector's default 10 s and logged as 'transport' instead of 'runtime'.
-          { timeoutMs: (args.timeoutMs ?? 10000) + 2000 }
+          { timeoutMs: (args.timeoutMs ?? EVAL_DEFAULT_TIMEOUT_MS) + EVAL_TRANSPORT_MARGIN_MS }
         );
 
         return {

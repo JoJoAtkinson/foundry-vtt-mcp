@@ -5,6 +5,17 @@ import { join } from 'path';
 import { ZodError } from 'zod';
 import { EVAL_JS_DEFINITION, registerEvalJs } from './eval-js.js';
 import { ActionLog } from '../action-log.js';
+import {
+  EVAL_DEFAULT_TIMEOUT_MS,
+  EVAL_QUERY,
+  EVAL_TRANSPORT_MARGIN_MS,
+} from './pentaryn-call.js';
+import { DEFAULT_TIMEOUT_MS } from './pentaryn-read.js';
+import {
+  registerForkHandlers,
+  unregisterForkHandlers,
+} from '../../../../foundry-module/src/fork/handlers.js';
+import { SERIALIZE_LIMITS } from '../../../../foundry-module/src/fork/serialize.js';
 
 const logger: any = {
   info: vi.fn(),
@@ -245,10 +256,10 @@ describe('caller identity on the eval line (mcp-fork-7)', () => {
 describe('description (mcp-fork-21)', () => {
   it('states the serializer limits and where pentaryn APIs live', () => {
     const d = EVAL_JS_DEFINITION.description;
-    // These numbers are the module's SERIALIZE_LIMITS (foundry-module serialize.test.ts).
-    expect(d).toMatch(/depth <=4/);
-    expect(d).toMatch(/arrays <=200/);
-    expect(d).toMatch(/Collection <=100/);
+    // Built from the module's SERIALIZE_LIMITS, so a limit change there fails here (ext-5).
+    expect(d).toContain(`depth <=${SERIALIZE_LIMITS.depth}`);
+    expect(d).toContain(`arrays <=${SERIALIZE_LIMITS.array}`);
+    expect(d).toContain(`Collection <=${SERIALIZE_LIMITS.collection}`);
     expect(d).toMatch(/game\.pentaryn\.describe\(\)/);
   });
 });
@@ -299,5 +310,37 @@ describe('the eval line goes to the registry action log by default (M11)', () =>
     registerEvalJs(fakeRegistry, client, logger);
     await handler({ script: 'return 1', purpose: 'p' });
     expect(append).toHaveBeenCalledWith('eval', expect.objectContaining({ purpose: 'p', ok: true }));
+  });
+});
+
+describe('one eval query name and timeout, shared with pentaryn-call (M2, ext-5)', () => {
+  it('exports the constants with their current values', () => {
+    expect(EVAL_QUERY).toBe('foundry-mcp-bridge.fork.eval');
+    expect(EVAL_DEFAULT_TIMEOUT_MS).toBe(10_000);
+    expect(EVAL_TRANSPORT_MARGIN_MS).toBe(2_000);
+    expect(DEFAULT_TIMEOUT_MS).toBe(EVAL_DEFAULT_TIMEOUT_MS);
+  });
+
+  it('EVAL_QUERY is a query the bridge module actually registers', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    (globalThis as any).CONFIG = { queries: {} };
+    try {
+      registerForkHandlers();
+      expect(typeof (globalThis as any).CONFIG.queries[EVAL_QUERY]).toBe('function');
+    } finally {
+      unregisterForkHandlers();
+      delete (globalThis as any).CONFIG;
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('eval-js sends EVAL_QUERY with the default timeout plus the transport margin', async () => {
+    const { handler, client } = setup(async () => ({ ok: true, phase: 'complete', ms: 1 }));
+    await handler({ script: 'return 1', purpose: 'p' });
+    await handler({ script: 'return 1', purpose: 'p', timeoutMs: 3000 });
+    expect(client.query.mock.calls.map((c: any[]) => [c[0], c[2]])).toEqual([
+      [EVAL_QUERY, { timeoutMs: EVAL_DEFAULT_TIMEOUT_MS + EVAL_TRANSPORT_MARGIN_MS }],
+      [EVAL_QUERY, { timeoutMs: 3000 + EVAL_TRANSPORT_MARGIN_MS }],
+    ]);
   });
 });

@@ -48,6 +48,13 @@
 import type { FoundryClient } from '../../foundry-client.js';
 
 export const EVAL_QUERY = 'foundry-mcp-bridge.fork.eval';
+/** The in-browser eval timeout when a caller gives none (eval-js, pentaryn-read/write). */
+export const EVAL_DEFAULT_TIMEOUT_MS = 10_000;
+/**
+ * Added to the in-browser timeout for the transport, which must outlive it: otherwise a
+ * 30 s script is cut at the connector's default 10 s and reported as a transport failure.
+ */
+export const EVAL_TRANSPORT_MARGIN_MS = 2_000;
 
 export type CallMode = 'read' | 'write';
 
@@ -312,8 +319,7 @@ export async function runPentarynCall(
     r = await foundryClient.query(
       EVAL_QUERY,
       { script: buildCallScript(call), timeoutMs },
-      // the transport must outlive the in-browser timeout (as eval-js does)
-      { timeoutMs: timeoutMs + 2000 }
+      { timeoutMs: timeoutMs + EVAL_TRANSPORT_MARGIN_MS }
     );
   } catch (err: any) {
     const msg = String(err?.message ?? err).replace(/^Query \S+ failed: /, '');
@@ -323,7 +329,7 @@ export async function runPentarynCall(
     if (/^Query timeout: /.test(msg)) {
       throw codedError(
         'TIMEOUT',
-        `${where} did not answer in ${timeoutMs + 2000} ms; it may still be running — re-read before retrying`
+        `${where} did not answer in ${timeoutMs + EVAL_TRANSPORT_MARGIN_MS} ms; it may still be running — re-read before retrying`
       );
     }
     // A coded refusal from the GM tab (NOT_GM from requireGM, …) keeps its code.

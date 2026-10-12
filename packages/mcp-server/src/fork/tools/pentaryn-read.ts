@@ -10,9 +10,14 @@ import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { ActionLog } from '../action-log.js';
 import type { ForkCallMeta, ForkRegistry } from '../registry.js';
-import { codedError, runPentarynCall, type PentarynEnvelope } from './pentaryn-call.js';
+import {
+  EVAL_DEFAULT_TIMEOUT_MS,
+  codedError,
+  runPentarynCall,
+  type PentarynEnvelope,
+} from './pentaryn-call.js';
 
-export const DEFAULT_TIMEOUT_MS = 10_000;
+export const DEFAULT_TIMEOUT_MS = EVAL_DEFAULT_TIMEOUT_MS;
 
 /** The arguments both D14 tools share. */
 export const CallArgs = z
