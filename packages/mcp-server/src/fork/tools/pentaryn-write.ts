@@ -1,7 +1,8 @@
 /**
  * pentaryn-write — call a WRITE method of a Pentaryn blueprint module as the GM (D14).
  * Read rows are refused in the GM tab (pentaryn-call.ts). Every call is a write in the
- * action log, with its arguments (sanitised by the registry), ok, code, summary and ids.
+ * action log, with its arguments (sanitised by the registry), ok, code, summary and ids
+ * (the module's own `ids`, else the documents its result returns — {@link collectIds}).
  */
 
 import { z } from 'zod';
@@ -63,19 +64,80 @@ export function registerPentarynWrite(
         },
         a.timeoutMs ?? DEFAULT_TIMEOUT_MS
       );
-      const ids = (env.result as any)?.ids;
+      // a dry run changed nothing, and a refusal has nothing to point at
+      const ids = env.ok && !a.dryRun ? collectIds(env.result) : [];
       return {
         ...env,
         // read by the registry's action-log line (with ok and code)
         summary:
           `${a.ns}.${a.path}${a.ref ? ` ${a.ref}` : ''}${a.dryRun ? ' (dry run)' : ''} — ` +
           (env.ok ? 'ok' : (env.code ?? 'failed')),
-        ids: Array.isArray(ids) ? ids.filter((x: unknown) => typeof x === 'string') : [],
+        ids,
       };
     },
     // Logged in full: the args are the record of what was asked (sanitizeForLog caps them).
     { write: true, logArgs: (a: any) => a }
   );
+}
+
+/** Bounds of {@link collectIds}: how deep it looks into a result, and how many ids it keeps. */
+const IDS_MAX_DEPTH = 4;
+const IDS_MAX = 50;
+const FOUNDRY_ID = /^[A-Za-z0-9]{16}$/;
+
+/**
+ * The document ids a write's result points at, for the action log's `ids`. A module's own
+ * `ids` array wins (strings only). Otherwise the result is walked — depth ≤ 4, ≤ 50 ids,
+ * de-duplicated, cycles skipped — and each object contributes one id: its `uuid`, else its
+ * `_id` (the serializer keeps `_id` only on Documents), else an `id` shaped like a Foundry id
+ * (16 alphanumerics; `{id: "prone"}` is not a document). That covers `{item, actor}`
+ * (dropbin.restoreResult), `documents: [...]`, bare arrays and a returned Document stub.
+ * Best effort: never throws, returns [] on anything odd.
+ */
+export function collectIds(result: unknown): string[] {
+  try {
+    const own = (result as any)?.ids;
+    if (Array.isArray(own)) return own.filter((x: unknown) => typeof x === 'string');
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  const seen = new Set<unknown>();
+  const walk = (v: unknown, depth: number): void => {
+    if (out.length >= IDS_MAX || depth > IDS_MAX_DEPTH || !v || typeof v !== 'object') return;
+    if (seen.has(v)) return;
+    seen.add(v);
+    try {
+      if (Array.isArray(v)) {
+        for (const x of v) walk(x, depth + 1);
+        return;
+      }
+      const o = v as Record<string, unknown>;
+      const id =
+        typeof o.uuid === 'string' && o.uuid
+          ? o.uuid
+          : typeof o._id === 'string' && o._id
+            ? o._id
+            : typeof o.id === 'string' && FOUNDRY_ID.test(o.id)
+              ? o.id
+              : undefined;
+      if (id && !out.includes(id)) out.push(id);
+      for (const k of Object.keys(o)) {
+        if (out.length >= IDS_MAX) return;
+        let child: unknown;
+        try {
+          child = o[k];
+        } catch {
+          continue;
+        }
+        walk(child, depth + 1);
+      }
+    } catch {
+      /* a hostile getter or proxy: keep what we have */
+    }
+  };
+  walk(result, 0);
+  return out;
 }
 
 export { DEFINITION as PENTARYN_WRITE_DEFINITION };

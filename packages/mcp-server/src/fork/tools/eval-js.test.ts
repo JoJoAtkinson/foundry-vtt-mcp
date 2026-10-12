@@ -250,3 +250,35 @@ describe('description (mcp-fork-21)', () => {
     expect(d).toMatch(/game\.pentaryn\.describe\(\)/);
   });
 });
+
+describe('the action-log line of a rejected call (2026-10-11 live check)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'evaljs-args-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+  });
+  afterEach(() => {
+    delete process.env.PENTARYN_MCP_LOG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("carries phase:'args' and a one-line error, as the eval line does", async () => {
+    const { ForkRegistry } = await import('../registry.js');
+    const reg = new ForkRegistry(logger);
+    const client: any = { query: vi.fn(async () => ({ ok: true })) };
+    registerEvalJs(reg, client, logger, reg.actionLog);
+    await expect(
+      reg.dispatch('eval-js', { purpose: 'p', timeoutMs: 500 }, { client: { pid: 1, ppid: 0 } })
+    ).rejects.toBeInstanceOf(ZodError);
+    expect(client.query).not.toHaveBeenCalled();
+    const [line] = readdirSync(dir)
+      .filter(f => /^mcp-.*\.jsonl$/.test(f))
+      .flatMap(f => readFileSync(join(dir, f), 'utf8').trim().split('\n'))
+      .map(l => JSON.parse(l));
+    expect(line).toMatchObject({ tool: 'eval-js', ok: false, phase: 'args' });
+    expect(line.error).not.toContain('\n');
+    expect(line.error).toMatch(/^script: .+; timeoutMs: .+$/);
+    const [ev] = evalLines(dir);
+    expect(line.error).toBe(ev.error);
+  });
+});

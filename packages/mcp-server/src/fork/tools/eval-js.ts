@@ -86,19 +86,22 @@ export function registerEvalJs(
         // A rejected call is still a call: the promotion review reads this log, and a
         // missing purpose or an out-of-range timeout is worth seeing there.
         const raw = (rawArgs ?? {}) as { purpose?: unknown; script?: unknown };
+        const error = parsed.error.issues
+          .map(i => `${i.path.join('.') || '(args)'}: ${i.message}`)
+          .join('; ');
         actionLog.append('eval', {
           ts: new Date().toISOString(),
           purpose: typeof raw.purpose === 'string' ? raw.purpose : null,
           script: typeof raw.script === 'string' ? raw.script : null,
           ok: false,
           phase: 'args',
-          error: parsed.error.issues
-            .map(i => `${i.path.join('.') || '(args)'}: ${i.message}`)
-            .join('; '),
+          error,
           ms: 0,
           client: meta?.client,
         });
-        throw parsed.error; // the original ZodError, so the thrown text is unchanged
+        // The original ZodError, so the thrown text is unchanged; `phase` and `logError` give
+        // the registry's action-log line the same phase and one-line error as the eval line.
+        throw Object.assign(parsed.error, { phase: 'args', logError: error });
       }
       const args = parsed.data;
       log.info(`eval: ${args.purpose}`);

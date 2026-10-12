@@ -13,6 +13,7 @@ const FORK_PREFIX = `${MODULE_ID}.fork`;
 
 import { rechargeUpdate } from './recharge.js';
 import { serialize } from './serialize.js';
+import { TOGGLE_KEYS, withToggleDefault } from './toggle-condition.js';
 
 declare const game: any;
 declare const CONFIG: any;
@@ -58,6 +59,9 @@ function assertSenderIsGM(ctx: QueryContext | undefined, what: string): void {
  * without a ctx (the bridge socket; pentaryn-prompts calling a handler directly) are
  * unchanged. Other modules' queries and the fork's own (`.fork.*`, guarded by requireGM)
  * are left alone. Runs after upstream's registerHandlers() (main.ts).
+ *
+ * The toggle-token-condition keys also get `active` filled in when it is omitted
+ * (toggle-condition.ts), so the tool's documented "omitted = toggle" works.
  */
 function guardBridgeQueries(): void {
   for (const [key, h] of Object.entries(CONFIG.queries as Record<string, any>)) {
@@ -65,7 +69,7 @@ function guardBridgeQueries(): void {
     if (typeof h !== 'function' || h.__forkGuarded) continue;
     const guarded = async (data: unknown, ctx?: QueryContext) => {
       assertSenderIsGM(ctx, 'bridge queries');
-      return h(data, ctx);
+      return h(TOGGLE_KEYS.has(key) ? withToggleDefault(data as any) : data, ctx);
     };
     (guarded as any).__forkGuarded = true;
     CONFIG.queries[key] = guarded;

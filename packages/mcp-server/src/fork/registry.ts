@@ -216,7 +216,10 @@ export class ForkRegistry {
           action: args?.action,
           args: logged(),
           ok: false,
-          error: String(err?.message ?? err),
+          // A handler may attach `phase` and a one-line `logError` to what it throws
+          // (eval-js's argument rejection: phase 'args', not the multi-line ZodError text).
+          ...(typeof err?.phase === 'string' ? { phase: err.phase } : {}),
+          error: typeof err?.logError === 'string' ? err.logError : String(err?.message ?? err),
           ms: Date.now() - started,
           client: meta?.client,
         });
@@ -258,6 +261,7 @@ export class ForkRegistry {
     args: unknown;
     ok: boolean;
     result?: any;
+    phase?: string;
     error?: string;
     ms: number;
     client?: unknown;
@@ -274,7 +278,7 @@ export class ForkRegistry {
         action: entry.action ?? undefined,
         args: sanitizeForLog(entry.args),
         ok: entry.ok && r?.ok !== false,
-        phase: typeof r?.phase === 'string' ? r.phase : undefined,
+        phase: typeof r?.phase === 'string' ? r.phase : entry.phase,
         code: typeof r?.code === 'string' ? r.code : undefined,
         summary: entry.ok ? entry.result?.summary : undefined,
         ids: entry.ok ? entry.result?.ids : undefined,

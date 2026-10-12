@@ -1,3 +1,18 @@
+## Unreleased (fix/optional-2026-10-11)
+
+Fixes from the 2026-10-11 live checks. Deploy both halves (server and bridge module).
+
+### Behaviour
+
+- `toggle-token-condition` with `active` omitted toggles the current state, as its schema always said; before, the bridge module refused it with `active must be a boolean`. Resolved in the fork's bridge-query wrapper (`src/fork/toggle-condition.ts`); no upstream file changes
+
+### Action log
+
+- `pentaryn-write` lines carry the ids of the documents the module returned when its result has no `ids` of its own (`{uuid}`, `{_id}`, a Foundry-shaped `{id}`, `documents`, arrays; depth ≤ 4, ≤ 50 ids; never throws). `dropbin.restoreResult` logs the created item and its actor instead of `ids: []`. A dry run or a refusal logs `ids: []`
+- An `eval-js` call rejected for its own arguments: the action-log line in `mcp-<YYYY-MM>.jsonl` now has `phase: "args"` and the same one-line error as the eval line (`script: …; timeoutMs: …`), not the multi-line validation dump. The thrown error is unchanged. Any fork handler can attach `phase` / `logError` to what it throws
+
+---
+
 ## v0.8.3-pentaryn.2 (2026-10-11)
 
 Fork release (branch `pentaryn`, wave 2 of the pentaryn blueprint migration). Needs **both**
