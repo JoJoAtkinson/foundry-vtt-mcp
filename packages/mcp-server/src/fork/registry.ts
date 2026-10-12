@@ -196,7 +196,7 @@ export class ForkRegistry {
     };
     try {
       const result = await (meta ? entry.handler(args, meta) : entry.handler(args));
-      if (isWrite)
+      if (isWrite && this.actionLog.enabled)
         this.log({
           tool: name,
           action: args?.action,
@@ -210,7 +210,7 @@ export class ForkRegistry {
     } catch (err: any) {
       // Failures are logged too — "why did nothing change on Tuesday" is exactly
       // the question a success-only log cannot answer.
-      if (isWrite) {
+      if (isWrite && this.actionLog.enabled) {
         this.log({
           tool: name,
           action: args?.action,

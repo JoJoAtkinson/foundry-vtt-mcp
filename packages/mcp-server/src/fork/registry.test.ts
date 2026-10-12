@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { ForkRegistry, globToRegExp, type ForkToolHandler } from './registry.js';
 import { UPSTREAM_WRITE_GLOBS, isUpstreamWrite } from './upstream-writes.js';
+import { ActionLog } from './action-log.js';
 
 const logger: any = {
   info: vi.fn(),
@@ -219,6 +220,22 @@ describe('value failures and logArgs (mcp-fork-4)', () => {
     );
     await expect(reg.dispatch('t', { secret: 'x' })).rejects.toThrow('boom');
     expect(logLines(dir)[0]).toMatchObject({ args: { hidden: true }, ok: false, error: 'boom' });
+  });
+
+  it('a disabled action log never builds logArgs', async () => {
+    const reg = new ForkRegistry(logger, new ActionLog(logger, null));
+    const logArgs = vi.fn((a: any) => a);
+    reg.register(DEF('ok'), async () => 'done', { write: true, logArgs });
+    reg.register(
+      DEF('bad'),
+      async () => {
+        throw new Error('boom');
+      },
+      { write: true, logArgs }
+    );
+    expect(await reg.dispatch('ok', { a: 1 })).toBe('done');
+    await expect(reg.dispatch('bad', { a: 1 })).rejects.toThrow('boom');
+    expect(logArgs).not.toHaveBeenCalled();
   });
 });
 
