@@ -39,6 +39,9 @@
  * The result travels back as JSON text, made plain in the browser (Documents → {_document,
  * _id, name, uuid}; cycles, Maps/Sets/Collections, depth ≤ 12, arrays ≤ 200), because the
  * eval serializer's depth-4 cap would cut a describe() (methods → params is depth 5).
+ * An invalid Date is '[unserializable]'. A write that landed is always `ok: true`: if its
+ * result still cannot be serialized, the envelope is `{ok: true, result: '[unserializable]',
+ * reason: 'result could not be serialized'}`, never a thrown INTERNAL (rob-1).
  */
 
 import type { FoundryClient } from '../../foundry-client.js';
@@ -96,7 +99,7 @@ const plain = (v, depth, stack) => {
   if (depth > LIMITS.depth) return '[max depth]';
   if (++nodes > LIMITS.nodes) return '[truncated]';
   if (stack.includes(v)) return '[circular]';
-  if (v instanceof Date) return v.toISOString();
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '[unserializable]' : v.toISOString();
   if (v instanceof Error) return { error: v.message, ...(v.code ? { code: v.code } : {}) };
   if (v.documentName && v._id !== undefined) {
     return { _document: v.documentName, _id: v._id, name: v.name ?? null, ...(v.uuid ? { uuid: v.uuid } : {}) };
@@ -253,7 +256,14 @@ if (writes && result && typeof result === 'object' && result.ok === false) {
   return out({ ok: false, ns: call.ns, path: call.path, code: typeof result.code === 'string' ? result.code : 'REFUSED',
     reason: result.reason ?? result.error ?? null, result });
 }
-return out({ ok: true, ns: call.ns, path: call.path, result });
+if (!writes) return out({ ok: true, ns: call.ns, path: call.path, result });
+// The write landed: a result that will not serialize must not turn it into a thrown INTERNAL.
+try {
+  return out({ ok: true, ns: call.ns, path: call.path, result });
+} catch {
+  return JSON.stringify({ ok: true, ns: call.ns, path: call.path, result: '[unserializable]',
+    reason: 'result could not be serialized' });
+}
 `;
 
 /** The eval script for one call: the fixed template with the call as a JSON literal. */

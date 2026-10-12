@@ -5,6 +5,7 @@ Fixes from the 2026-10-11 live checks. Deploy both halves (server and bridge mod
 ### Behaviour
 
 - `toggle-token-condition` with `active` omitted toggles the current state, as its schema always said; before, the bridge module refused it with `active must be a boolean`. Resolved in the fork's bridge-query wrapper (`src/fork/toggle-condition.ts`); no upstream file changes
+- `pentaryn-write` whose write landed but whose result holds an invalid Date (or anything else that will not serialize) answers `ok: true` instead of throwing `INTERNAL: … Invalid time value`, so the action log records it as landed: an invalid Date comes back as `'[unserializable]'`, and a result that still cannot be serialized is `{ok: true, result: '[unserializable]', reason: 'result could not be serialized'}` (rob-1)
 
 ### Action log
 

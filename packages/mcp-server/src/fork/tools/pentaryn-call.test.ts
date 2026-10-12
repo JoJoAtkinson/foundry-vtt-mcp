@@ -257,6 +257,54 @@ describe('pentaryn-call template', () => {
     });
   });
 
+  describe('rob-1: a write that landed is ok:true even when its result will not serialize', () => {
+    const landed = (value: unknown) => {
+      unregisterForkHandlers();
+      installGame(
+        withRow(
+          fakeNamespace(),
+          { path: 'stamp', params: [], gm: true, writes: true, doc: 'returns odd values' },
+          async () => {
+            calls.push(['stamp']);
+            return value;
+          }
+        )
+      );
+      return run({ mode: 'write', ns: 'fake', path: 'stamp' });
+    };
+
+    it("an invalid Date serializes as '[unserializable]', not INTERNAL 'Invalid time value'", async () => {
+      const env = await landed({ ok: true, at: new Date(NaN), on: new Date(0) });
+      expect(calls).toEqual([['stamp']]);
+      expect(env).toEqual({
+        ok: true,
+        ns: 'fake',
+        path: 'stamp',
+        result: { ok: true, at: '[unserializable]', on: '1970-01-01T00:00:00.000Z' },
+      });
+    });
+
+    it('a result that still throws while serializing is ok:true with a reason', async () => {
+      const hostile = new Proxy(
+        {},
+        {
+          ownKeys() {
+            throw new Error('revoked');
+          },
+        }
+      );
+      const env = await landed({ ok: true, doc: hostile });
+      expect(calls).toEqual([['stamp']]);
+      expect(env).toEqual({
+        ok: true,
+        ns: 'fake',
+        path: 'stamp',
+        result: '[unserializable]',
+        reason: 'result could not be serialized',
+      });
+    });
+  });
+
   it("a write row's own fail() is returned as a value with its code copied up", async () => {
     const env = await run({ mode: 'write', ns: 'fake', path: 'refuse' });
     expect(env).toEqual({
