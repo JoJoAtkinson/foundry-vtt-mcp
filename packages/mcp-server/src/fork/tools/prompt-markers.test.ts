@@ -599,6 +599,42 @@ describe('replace', () => {
     expect(args.replacements[1].with.light.dim).toBe(10);
   });
 
+  it('passes what the module accepts: a character folder and a fractional CR as "1/2" (PT PR-2)', () => {
+    const { args } = parseArgs({
+      action: 'replace',
+      call: 'pm-1',
+      replacements: [
+        {
+          id: 'p1',
+          with: {
+            kind: 'character',
+            name: 'Zed',
+            level: 5,
+            class: 'Sorcerer',
+            species: 'Human',
+            background: 'Charlatan',
+            abilities: { cha: 15 },
+            folder: 'ZZ usability',
+          },
+        },
+        { id: 'p2', with: { kind: 'actor', uuid: 'u', patch: { cr: '1/2' } } },
+        { id: 'p3', with: { kind: 'actor', uuid: 'u', patch: { cr: 0.25 } } },
+        { id: 'p4', with: { kind: 'actor', uuid: 'u', patch: { cr: '3' } } },
+      ],
+    });
+    expect(args.replacements[0].with.folder).toBe('ZZ usability');
+    expect(args.replacements.slice(1).map((r: any) => r.with.patch.cr)).toEqual(['1/2', 0.25, '3']);
+    for (const cr of ['half', '1/0', -1, 31, '40']) {
+      expect(() =>
+        parseArgs({
+          action: 'replace',
+          call: 'pm-1',
+          replacements: [{ id: 'p2', with: { kind: 'actor', uuid: 'u', patch: { cr } } }],
+        })
+      ).toThrow(/BAD_SPEC: .*cr/);
+    }
+  });
+
   it('specFile: reads the replacements from a JSON file; the call keeps dryRun and wins on call/party', async () => {
     const files: Record<string, string> = {
       '/s/arr.json': JSON.stringify([none('p1')]),

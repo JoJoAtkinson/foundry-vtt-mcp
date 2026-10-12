@@ -75,7 +75,23 @@ const Patch = z
       ])
       .optional(),
     ac: z.number().int().min(1).max(40).optional(),
-    cr: z.number().min(0).max(30).optional(),
+    /** A number, or a fraction / number as text ("1/2", "3") — the module reads fractions (parseCr). */
+    cr: z
+      .union([
+        z.number().min(0).max(30),
+        z
+          .string()
+          .regex(/^\s*(\d+(\.\d+)?|\d+\s*\/\s*[1-9]\d*)\s*$/, 'cr like 3, 0.5 or "1/2"')
+          .refine(
+            v => {
+              const m = /^\s*(\d+)\s*\/\s*(\d+)\s*$/.exec(v);
+              const n = m ? Number(m[1]) / Number(m[2]) : Number(v);
+              return n >= 0 && n <= 30;
+            },
+            { message: 'cr must be 0 to 30' }
+          ),
+      ])
+      .optional(),
     speed: z.number().int().min(0).optional(),
     disposition: Disposition.optional(),
     removeItems: z.array(Id).optional(),
@@ -128,6 +144,8 @@ const WithCharacter = z
     biography: z.string().optional(),
     alignment: z.string().optional(),
     img: Id.optional(),
+    /** The Actor folder (an id or a name; found, or created) — default Foundry MCP Characters. */
+    folder: Id.optional(),
     /**
      * The class's and background's PHB starting equipment: "A" (the gear, packs packed, a holy
      * symbol / arcane focus picked and printed as DEFAULTED unless one is in `items`), "B" (the
