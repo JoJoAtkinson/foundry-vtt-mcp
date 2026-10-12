@@ -86,6 +86,43 @@ describe('watchToolList', () => {
     expect(mcp.sendToolListChanged).toHaveBeenCalledTimes(1);
   });
 
+  it('a failed tools/list_changed send is logged and retried next tick (rob-6)', async () => {
+    // Before rob-6 the list was marked served before the send, and the catch was empty:
+    // one failed notify meant the session never heard of the change.
+    const send = vi.fn(async () => ({ tools: [A, B] }));
+    let fail = true;
+    const mcp = {
+      sendToolListChanged: vi.fn(async () => {
+        if (fail) throw new Error('transport closed');
+      }),
+    };
+    const log = vi.fn();
+    const markServed = watchToolList(mcp, send, 30_000, log);
+    markServed([A]);
+    await tick();
+    expect(mcp.sendToolListChanged).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(
+      'tools/list changed but notify failed: transport closed; will retry'
+    );
+    fail = false;
+    await tick();
+    expect(mcp.sendToolListChanged).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith('tools/list changed; notified the client');
+    await tick(); // now served: no third notification
+    expect(mcp.sendToolListChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it('a failed backend poll stays silent', async () => {
+    const send = vi.fn(async () => {
+      throw new Error('backend restarting');
+    });
+    const log = vi.fn();
+    const markServed = watchToolList({ sendToolListChanged: vi.fn(async () => {}) }, send, 30_000, log);
+    markServed([A]);
+    await tick();
+    expect(log).not.toHaveBeenCalled();
+  });
+
   it('an empty list from the backend is not a change', async () => {
     const send = vi.fn(async () => ({ tools: [] }));
     const mcp = { sendToolListChanged: vi.fn(async () => {}) };

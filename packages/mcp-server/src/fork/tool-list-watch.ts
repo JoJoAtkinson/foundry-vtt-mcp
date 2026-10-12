@@ -24,8 +24,10 @@ export function toolsKey(tools: any[] | undefined | null): string {
 
 /**
  * Start the poll. Nothing is compared until the session has fetched the list once
- * (`markServed`), a failed poll (backend restarting) is retried on the next tick, and
- * the timer never keeps the process alive.
+ * (`markServed`), a failed poll (backend restarting) is retried silently on the next
+ * tick, a failed `tools/list_changed` send is logged and retried on the next tick (the
+ * list only counts as served once the send resolves), and the timer never keeps the
+ * process alive.
  *
  * @returns markServed — call it with the tools the ListTools handler just returned.
  */
@@ -38,19 +40,25 @@ export function watchToolList(
   let served: string | null = null;
   const poll = setInterval(async () => {
     if (served === null) return;
+    let tools: any[];
     try {
       const res = await send();
-      const tools = res?.tools || [];
-      const key = toolsKey(tools);
-      // An empty list is a backend still starting, not a change.
-      if (tools.length && key !== served) {
-        served = key;
-        await mcp.sendToolListChanged();
-        log('tools/list changed; notified the client');
-      }
+      tools = res?.tools || [];
     } catch {
-      /* backend restarting: try again next tick */
+      return; /* backend restarting: try again next tick */
     }
+    const key = toolsKey(tools);
+    // An empty list is a backend still starting, not a change.
+    if (!tools.length || key === served) return;
+    try {
+      await mcp.sendToolListChanged();
+    } catch (e: any) {
+      // Not marked served, so the next tick sends it again.
+      log(`tools/list changed but notify failed: ${e?.message ?? e}; will retry`);
+      return;
+    }
+    served = key;
+    log('tools/list changed; notified the client');
   }, intervalMs);
   (poll as any).unref?.();
   return tools => {
