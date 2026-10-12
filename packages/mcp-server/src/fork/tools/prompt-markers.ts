@@ -475,21 +475,18 @@ export function createPromptMarkersHandler(deps: PromptMarkerDeps) {
     return { __mcpContent: [{ type: 'text', text }], summary, ids };
   }
 
+  const RUN: Record<Action, (args: any) => Promise<any>> = {
+    list: () => list(),
+    gather,
+    crops,
+    replace,
+    show,
+  };
+
   return async function handle(raw: unknown): Promise<any> {
     const { action, args } = parseArgs(withSpecFile(raw));
     log.info(`prompt-markers ${action}`);
-    switch (action) {
-      case 'list':
-        return list();
-      case 'gather':
-        return gather(args);
-      case 'crops':
-        return crops(args);
-      case 'replace':
-        return replace(args);
-      case 'show':
-        return show(args);
-    }
+    return RUN[action](args);
   };
 }
 
