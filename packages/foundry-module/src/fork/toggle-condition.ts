@@ -12,6 +12,10 @@
  * CONFIG.statusEffects id (fork-edge-4): upstream's removal never does, so a name that only
  * matches through it would default to a removal that removes nothing; it applies instead.
  *
+ * Only an omitted `active` (absent or undefined) is filled in (rob-4). Any other value — a
+ * string, null, a number — passes through unchanged, so upstream's own "active must be a
+ * boolean" refuses it rather than the wrapper silently replacing it with a toggle.
+ *
  * Best effort, never throws: a token or actor that cannot be found gets `active: true`, so
  * upstream raises its own "Token … not found" error instead of the boolean complaint.
  */
@@ -24,7 +28,7 @@ export const TOGGLE_KEYS = new Set([
 ]);
 
 export function withToggleDefault<T extends Record<string, any>>(data: T): T {
-  if (!data || typeof data !== 'object' || typeof data.active === 'boolean') return data;
+  if (!data || typeof data !== 'object' || data.active !== undefined) return data;
   let active = true;
   try {
     const wanted = String(data.conditionId ?? '').toLowerCase();
