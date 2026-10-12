@@ -26,8 +26,8 @@ export function toolsKey(tools: any[] | undefined | null): string {
  * Start the poll. Nothing is compared until the session has fetched the list once
  * (`markServed`), a failed poll (backend restarting) is retried silently on the next
  * tick, a failed `tools/list_changed` send is logged and retried on the next tick (the
- * list only counts as served once the send resolves), and the timer never keeps the
- * process alive.
+ * list only counts as served once the send resolves), a tick is skipped while the last
+ * poll is still in flight, and the timer never keeps the process alive.
  *
  * @returns markServed — call it with the tools the ListTools handler just returned.
  */
@@ -38,8 +38,8 @@ export function watchToolList(
   log: (msg: string) => void = () => {}
 ): (tools: any[]) => void {
   let served: string | null = null;
-  const poll = setInterval(async () => {
-    if (served === null) return;
+  let busy = false;
+  const check = async () => {
     let tools: any[];
     try {
       const res = await send();
@@ -59,6 +59,16 @@ export function watchToolList(
     }
     served = key;
     log('tools/list changed; notified the client');
+  };
+  const poll = setInterval(async () => {
+    // A slow send or notify must not overlap the next tick, or both could notify.
+    if (served === null || busy) return;
+    busy = true;
+    try {
+      await check();
+    } finally {
+      busy = false;
+    }
   }, intervalMs);
   (poll as any).unref?.();
   return tools => {

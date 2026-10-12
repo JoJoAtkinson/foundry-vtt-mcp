@@ -112,6 +112,29 @@ describe('watchToolList', () => {
     expect(mcp.sendToolListChanged).toHaveBeenCalledTimes(2);
   });
 
+  it('skips a tick while the previous poll is still in flight (fork-edge-7)', async () => {
+    // Before fork-edge-7 every tick started a poll even when the last one had not
+    // finished, so a slow notify let two polls both see the change and both send it.
+    const send = vi.fn(async () => ({ tools: [A, B] }));
+    let release!: () => void;
+    const mcp = {
+      sendToolListChanged: vi.fn(
+        () => new Promise<void>(resolve => (release = resolve))
+      ),
+    };
+    const markServed = watchToolList(mcp, send);
+    markServed([A]);
+    await tick(); // first poll: notify hangs
+    expect(mcp.sendToolListChanged).toHaveBeenCalledTimes(1);
+    await tick(); // still in flight: this tick is skipped
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(mcp.sendToolListChanged).toHaveBeenCalledTimes(1);
+    release();
+    await tick(); // first poll finished and marked served: no duplicate
+    expect(mcp.sendToolListChanged).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
   it('a failed backend poll stays silent', async () => {
     const send = vi.fn(async () => {
       throw new Error('backend restarting');
