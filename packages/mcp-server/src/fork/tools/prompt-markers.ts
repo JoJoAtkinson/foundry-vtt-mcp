@@ -495,14 +495,24 @@ export function registerPromptMarkers(
   foundryClient: FoundryClient,
   logger: Logger
 ): void {
-  registry.register(DEFINITION, createPromptMarkersHandler({ foundryClient, logger }), {
+  // The registry hands the same args object to the handler and to logArgs, so the file is read
+  // once, at the start of the call, and the log shows what ran even if it changes mid-call.
+  const read = new WeakMap<object, any>();
+  const handle = createPromptMarkersHandler({ foundryClient, logger });
+  const handler = async (raw: any) => {
+    const x = withSpecFile(raw);
+    if (raw && typeof raw === 'object') read.set(raw, x);
+    return handle(x);
+  };
+  registry.register(DEFINITION, handler, {
     // Only replace writes; a dry run is logged too, so the log shows the plan that preceded it.
     write: (args: any) => args?.action === 'replace',
     // A specFile is edited and deleted after use (prompt-markers.md), so log what it held,
     // not just its path. An unreadable file logs the raw args (the call fails anyway).
     logArgs: (args: any) => {
       try {
-        const expanded = withSpecFile(args);
+        const expanded =
+          args && typeof args === 'object' && read.has(args) ? read.get(args) : withSpecFile(args);
         return expanded === args ? args : { ...expanded, specFile: args.specFile };
       } catch {
         return args;
