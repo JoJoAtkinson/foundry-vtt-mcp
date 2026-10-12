@@ -33,8 +33,9 @@ export interface RechargeRequest {
 
 /**
  * Apply Recharge n–6 and say how it went, as the text add-feature appends to its message
- * and puts on its result as `recharge`: the dnd5e label ("Recharge 5–6") or
- * `not applied (<why>)`. Never throws.
+ * and puts on its result as `recharge`: the dnd5e label ("Recharge 5–6"),
+ * `not applied (<why>)`, or — when the query timed out, so the GM tab may still have written
+ * the row — `unknown (…)` (fork-ac-3). Never throws.
  */
 export async function applyRecharge(
   foundryClient: Pick<FoundryClient, 'query'>,
@@ -52,7 +53,11 @@ export async function applyRecharge(
       note = r.label ?? `Recharge ${req.n}–6`;
     }
   } catch (err: any) {
-    note = `not applied (${err?.message ?? err})`;
+    const msg = String(err?.message ?? err);
+    // A timeout says nothing about whether the row was written (fork-ac-3).
+    note = /^Query \S+ failed: Query timeout: |^Query timeout: /.test(msg)
+      ? 'unknown (the GM tab did not answer in 10 s; it may have applied — re-read the feature before retrying)'
+      : `not applied (${msg})`;
   }
   logger.debug(`dnd5e-add-feature recharge: ${note}`);
   return note;
