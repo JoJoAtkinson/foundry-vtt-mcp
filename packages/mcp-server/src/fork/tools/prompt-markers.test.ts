@@ -635,6 +635,12 @@ describe('replace', () => {
     }
   });
 
+  it('a non-string specFile fails as specFile: Expected string', () => {
+    expect(() =>
+      parseArgs({ action: 'replace', call: 'pm-1', specFile: 3, replacements: [none('p1')] })
+    ).toThrow(/^BAD_SPEC: .*specFile: Expected string/);
+  });
+
   it('specFile: reads the replacements from a JSON file; the call keeps dryRun and wins on call/party', async () => {
     const files: Record<string, string> = {
       '/s/arr.json': JSON.stringify([none('p1')]),
@@ -1167,6 +1173,35 @@ describe('registry logging', () => {
     expect(line.args.call).toBe('pm-9');
     expect(line.args.replacements[0].id).toBe('p4');
     expect(line.args.dryRun).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a specFile replace logs what the file held when it ran, even if it changes mid-call', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pm-log16c-'));
+    process.env.PENTARYN_MCP_LOG_DIR = dir;
+    const file = join(dir, 'spec.json');
+    const none = (id: string) => ({ id, with: { kind: 'none', reason: 'cut' } });
+    writeFileSync(file, JSON.stringify({ call: 'pm-9', replacements: [none('p4')] }));
+    const query = vi.fn(async (_m: string, d: any) => {
+      writeFileSync(file, JSON.stringify({ call: 'pm-9', replacements: [none('p9')] }));
+      return {
+        dryRun: !!d.dryRun,
+        call: d.call,
+        text: `replace ${d.call} — dry run: 1 ok, 0 failed`,
+        results: [
+          { index: 0, id: 'p4', label: 'p4', kind: 'none', ok: true, created: [], ids: [] },
+        ],
+        remaining: {},
+        encounters: [],
+      };
+    });
+    const reg = new ForkRegistry(logger);
+    registerPromptMarkers(reg, { query } as any, logger);
+    await reg.dispatch('prompt-markers', { action: 'replace', specFile: file, dryRun: true });
+    const month = new Date().toISOString().slice(0, 7);
+    const line = JSON.parse(readFileSync(join(dir, `mcp-${month}.jsonl`), 'utf8').trim());
+    expect(line.args.replacements[0].id).toBe('p4');
+    expect(line.args.specFile).toBe(file);
     rmSync(dir, { recursive: true, force: true });
   });
 

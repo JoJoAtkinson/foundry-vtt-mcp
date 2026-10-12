@@ -76,6 +76,23 @@ describe('pentaryn-write', () => {
     });
   });
 
+  it('opts.dryRun counts as a dry run: summary says (dry run) and no ids are logged', async () => {
+    (globalThis as any).game.pentaryn.fake.store.set = async (ref: string, opts: any) => {
+      calls.push(['set', ref, opts]);
+      return { ok: true, dryRun: true, item: { uuid: 'Actor.A1' } };
+    };
+    const args = { ns: 'fake', path: 'store.set', ref: 'Esren', opts: { dryRun: true } };
+    const res: any = await reg.dispatch('pentaryn-write', args);
+    expect(calls).toEqual([['set', 'Esren', { dryRun: true }]]);
+    expect(res.summary).toBe('fake.store.set Esren (dry run) — ok');
+    expect(res.ids).toEqual([]);
+    expect(lines(dir)[0]).toMatchObject({
+      ok: true,
+      summary: 'fake.store.set Esren (dry run) — ok',
+      ids: [],
+    });
+  });
+
   it('dryRun on a row without one is refused, logged as BAD_ARGS, and nothing runs', async () => {
     unregisterForkHandlers();
     installGame(

@@ -48,7 +48,9 @@ describe('applyRecharge through the typed fork query (mcp-fork-10)', () => {
       itemId: 'I1',
     }));
     expect(await applyRecharge({ query } as any, REQ, logger)).toBe('Recharge 5–6');
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.fork.applyRecharge', REQ);
+    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.fork.applyRecharge', REQ, {
+      timeoutMs: 10000,
+    });
   });
 
   it('no label -> the generic text', async () => {
@@ -129,13 +131,17 @@ describe('applyRecharge through the typed fork query (mcp-fork-10)', () => {
       featureName: 'Breath',
       recharge: 5,
     });
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.fork.applyRecharge', {
-      actorIdentifier: 'Og',
-      actorId: 'O1',
-      itemId: 'I1',
-      featureName: 'Breath',
-      n: 5,
-    });
+    expect(query).toHaveBeenCalledWith(
+      'foundry-mcp-bridge.fork.applyRecharge',
+      {
+        actorIdentifier: 'Og',
+        actorId: 'O1',
+        itemId: 'I1',
+        featureName: 'Breath',
+        n: 5,
+      },
+      { timeoutMs: 10000 }
+    );
     expect(res.recharge).toBe('Recharge 5–6');
   });
 

@@ -14,8 +14,11 @@
 
 import type { Logger } from '../logger.js';
 import { ActionLog } from './action-log.js';
+import { globToRegExp } from './glob.js';
 import { isUpstreamWrite } from './upstream-writes.js';
 import type { McpContentBlock } from './content.js';
+
+export { globToRegExp } from './glob.js';
 
 export interface ForkToolDefinition {
   name: string;
@@ -90,18 +93,6 @@ function sanitizeForLog(value: unknown): unknown {
     return { length: value.length, head: value.slice(0, 120) };
   }
   return value;
-}
-
-/**
- * Convert a deny-glob ("dnd5e-*", "generate-map") to a matcher. Only `*` is
- * supported — anything richer invites a regex-injection footgun for no gain.
- */
-export function globToRegExp(glob: string): RegExp {
-  const escaped = glob
-    .trim()
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`);
 }
 
 export class ForkRegistry {
@@ -196,7 +187,7 @@ export class ForkRegistry {
     };
     try {
       const result = await (meta ? entry.handler(args, meta) : entry.handler(args));
-      if (isWrite)
+      if (isWrite && this.actionLog.enabled)
         this.log({
           tool: name,
           action: args?.action,
@@ -210,7 +201,7 @@ export class ForkRegistry {
     } catch (err: any) {
       // Failures are logged too — "why did nothing change on Tuesday" is exactly
       // the question a success-only log cannot answer.
-      if (isWrite) {
+      if (isWrite && this.actionLog.enabled) {
         this.log({
           tool: name,
           action: args?.action,

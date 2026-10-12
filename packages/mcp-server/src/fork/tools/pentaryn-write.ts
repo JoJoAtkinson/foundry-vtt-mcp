@@ -52,6 +52,8 @@ export function registerPentarynWrite(
       const parsed = WriteArgs.safeParse(raw);
       if (!parsed.success) throw badArgs(parsed.error);
       const a = parsed.data;
+      // the same truthiness as the template's `call.dryRun || call.opts?.dryRun`
+      const dry = !!a.dryRun || !!(a.opts as any)?.dryRun;
       const env = await runPentarynCall(
         foundryClient,
         {
@@ -65,12 +67,12 @@ export function registerPentarynWrite(
         a.timeoutMs ?? DEFAULT_TIMEOUT_MS
       );
       // a dry run changed nothing, and a refusal has nothing to point at
-      const ids = env.ok && !a.dryRun ? collectIds(env.result) : [];
+      const ids = env.ok && !dry ? collectIds(env.result) : [];
       return {
         ...env,
         // read by the registry's action-log line (with ok and code)
         summary:
-          `${a.ns}.${a.path}${a.ref ? ` ${a.ref}` : ''}${a.dryRun ? ' (dry run)' : ''} — ` +
+          `${a.ns}.${a.path}${a.ref ? ` ${a.ref}` : ''}${dry ? ' (dry run)' : ''} — ` +
           (env.ok ? 'ok' : (env.code ?? 'failed')),
         ids,
       };
