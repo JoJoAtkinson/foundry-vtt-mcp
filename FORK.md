@@ -52,8 +52,9 @@ notes, local), `package-lock.json` (follows the version strings), and this file 
 ## Fork-only files
 
 `packages/foundry-module/src/fork/`: `handlers.ts` (the `fork.eval` and `fork.applyRecharge`
-queries, the GM guard on upstream bridge queries), `serialize.ts`, `recharge.ts`, `legacy-keys.ts`
-(+ `*.test.ts` beside them) · `packages/mcp-server/src/fork/`: `index.ts`, `registry.ts`,
+queries, the GM guard on upstream bridge queries), `serialize.ts`, `recharge.ts`, `legacy-keys.ts`,
+`toggle-condition.ts` (fills an omitted `active` on toggle-token-condition from the token's
+current effects, inside `guardBridgeQueries`) (+ `*.test.ts` beside them) · `packages/mcp-server/src/fork/`: `index.ts`, `registry.ts`,
 `content.ts`, `action-log.ts`, `upstream-writes.ts`, `tool-list-watch.ts`, `recharge.ts`;
 `tools/eval-js.ts`, `tools/prompt-markers.ts` + `prompt-markers.schema.ts`,
 `tools/pentaryn-call.ts`, `tools/pentaryn-read.ts`, `tools/pentaryn-write.ts` (+ tests and

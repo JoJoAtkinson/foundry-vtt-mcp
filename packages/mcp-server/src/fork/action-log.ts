@@ -2,8 +2,8 @@
  * The fork's JSONL action logs, one writer for every stream.
  *
  * Enabled by PENTARYN_MCP_LOG_DIR (unset → nothing is written, silently). Streams:
- *   - 'actions' → `mcp-<YYYY-MM>.jsonl`: the registry's write lines (and, later, the
- *     upstream write tools and the compact pentaryn-read lines);
+ *   - 'actions' → `mcp-<YYYY-MM>.jsonl`: the registry's write lines (fork tools and the
+ *     upstream write tools) and the compact pentaryn-read lines (no `args`; W2-B2);
  *   - 'eval'    → `eval-<YYYY-MM>.jsonl`: eval-js's full-script record. (Before
  *     0.8.3-pentaryn.2 it was one unrotated `eval.jsonl`; that file is left where it is,
  *     and readers glob `eval*.jsonl`.)
