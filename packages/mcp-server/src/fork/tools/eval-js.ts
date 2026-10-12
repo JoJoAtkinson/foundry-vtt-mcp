@@ -21,7 +21,7 @@ import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { ForkCallMeta, ForkRegistry } from '../registry.js';
-import { ActionLog } from '../action-log.js';
+import type { ActionLog } from '../action-log.js';
 
 const ArgsSchema = z.object({
   script: z.string().min(1),
@@ -70,7 +70,7 @@ export function registerEvalJs(
   registry: ForkRegistry,
   foundryClient: FoundryClient,
   logger: Logger,
-  actionLog: ActionLog = ActionLog.fromEnv(logger)
+  actionLog: ActionLog = registry.actionLog
 ): void {
   const log = logger.child({ component: 'eval-js' });
 

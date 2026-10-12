@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { ZodError } from 'zod';
 import { EVAL_JS_DEFINITION, registerEvalJs } from './eval-js.js';
+import { ActionLog } from '../action-log.js';
 
 const logger: any = {
   info: vi.fn(),
@@ -18,6 +19,7 @@ function setup(query: (...a: any[]) => Promise<any>) {
   let handler: any;
   let opts: any;
   const fakeRegistry: any = {
+    actionLog: ActionLog.fromEnv(logger),
     register: (_def: any, h: any, o: any) => {
       handler = h;
       opts = o;
@@ -280,5 +282,22 @@ describe('the action-log line of a rejected call (2026-10-11 live check)', () =>
     expect(line.error).toMatch(/^script: .+; timeoutMs: .+$/);
     const [ev] = evalLines(dir);
     expect(line.error).toBe(ev.error);
+  });
+});
+
+describe('the eval line goes to the registry action log by default (M11)', () => {
+  it('writes through registry.actionLog when no actionLog is passed', async () => {
+    const append = vi.fn();
+    let handler: any;
+    const fakeRegistry: any = {
+      actionLog: { enabled: true, append },
+      register: (_def: any, h: any) => {
+        handler = h;
+      },
+    };
+    const client: any = { query: vi.fn(async () => ({ ok: true, phase: 'complete', ms: 1 })) };
+    registerEvalJs(fakeRegistry, client, logger);
+    await handler({ script: 'return 1', purpose: 'p' });
+    expect(append).toHaveBeenCalledWith('eval', expect.objectContaining({ purpose: 'p', ok: true }));
   });
 });

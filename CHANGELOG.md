@@ -25,6 +25,7 @@ Fixes from the 2026-10-11 live checks. Deploy both halves (server and bridge mod
 - An upstream write tool that refuses as a value (`{success: false, error}` — `switch-scene`, `assign-actor-ownership`/`remove-actor-ownership`, `wfrp4e-*`, map jobs) is logged `ok: false` with that `error`, not `ok: true` (fork-edge-2)
 - Every upstream tool the server serves must be classified as a write (logged) or a read (`UPSTREAM_READ_TOOLS` beside the write globs in `src/fork/upstream-writes.ts`); `fork/upstream-writes.test.ts` builds the real upstream tool classes and fails naming any tool an upstream rebase adds unclassified. No runtime change (ext-6)
 - An `eval-js` call rejected for its own arguments: the action-log line in `mcp-<YYYY-MM>.jsonl` now has `phase: "args"` and the same one-line error as the eval line (`script: …; timeoutMs: …`), not the multi-line validation dump. The thrown error is unchanged. Any fork handler can attach `phase` / `logError` to what it throws
+- `registerEvalJs` writes its eval lines through the registry's own action log (`registry.actionLog`) unless one is passed, like every other fork tool; `createForkRegistry` no longer passes it explicitly. Production unchanged — it already passed the same instance. Server change (`src/fork/tools/eval-js.ts`, `src/fork/index.ts`) (M11)
 
 ---
 
