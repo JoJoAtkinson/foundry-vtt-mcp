@@ -70,7 +70,8 @@ const DEFINITION = {
     "one module's rows with params, gm, writes, doc. `ref` is resolved by the module (Actor, " +
     'Token, uuid, id or exact name; ambiguity -> AMBIGUOUS). Write rows are refused with ' +
     'BAD_ARGS: use pentaryn-write. Unknown ns/path -> NOT_FOUND listing what exists. Refusals ' +
-    'are values {ok:false, code, reason}. Namespaces without describe() (combat, riders, transform, aoe, …) are ' +
+    'are values {ok:false, code, reason}. Every module namespace publishes describe(); the ' +
+    'chain alias has none (call senses chain.* rows), and any namespace without describe() is ' +
     'eval-js only — see the Module APIs index in context/foundry/README.md. Documents come back ' +
     'as {_document, _id, name, uuid}; depth <=12, arrays <=200.',
   inputSchema: {
