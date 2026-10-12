@@ -15,6 +15,8 @@ import type { FoundryClient } from '../foundry-client.js';
 import type { Logger } from '../logger.js';
 
 export const APPLY_RECHARGE_QUERY = 'foundry-mcp-bridge.fork.applyRecharge';
+/** Explicit per-query timeout (§5.9.4); the same 10 s the connector would default to. */
+export const APPLY_RECHARGE_TIMEOUT_MS = 10_000;
 
 export interface RechargeRequest {
   actorIdentifier: string;
@@ -41,7 +43,9 @@ export async function applyRecharge(
 ): Promise<string> {
   let note: string;
   try {
-    const r: any = await foundryClient.query(APPLY_RECHARGE_QUERY, req);
+    const r: any = await foundryClient.query(APPLY_RECHARGE_QUERY, req, {
+      timeoutMs: APPLY_RECHARGE_TIMEOUT_MS,
+    });
     if (r?.ok === false || !r) {
       note = `not applied (${r?.error ?? 'no answer'})`;
     } else {
