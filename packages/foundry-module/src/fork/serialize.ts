@@ -20,7 +20,9 @@ export const SERIALIZE_LIMITS = Object.freeze({ depth: 4, array: 200, collection
  *  - deeper than SERIALIZE_LIMITS.depth → "[max depth]".
  *  - any object seen before in this result → "[circular]" (a repeated reference too,
  *    not only a true cycle).
- *  - Date → ISO string; Error → {error, stack (4 lines)}.
+ *  - Date → ISO string; an invalid Date (getTime() is NaN) → "[unserializable]" wherever
+ *    it appears (top level, array element, collection value, object property) (rob-2);
+ *    Error → {error, stack (4 lines)}.
  *  - a Foundry Document (documentName + _id) → {_document, _id, name}, plus `source`
  *    (toObject()) only at depth 0.
  *  - Map, Set, Foundry Collection (anything with entries() and a numeric size) → array
@@ -42,7 +44,8 @@ export function serialize(value: any, depth = 0, seen = new WeakSet()): any {
   if (seen.has(value)) return '[circular]';
   seen.add(value);
 
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date)
+    return Number.isNaN(value.getTime()) ? '[unserializable]' : value.toISOString();
   if (value instanceof Error)
     return { error: value.message, stack: value.stack?.split('\n').slice(0, 4) };
 
