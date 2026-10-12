@@ -17,4 +17,19 @@ describe('foundry-module vitest harness', () => {
     unregisterForkHandlers();
     expect((globalThis as any).CONFIG.queries['foundry-mcp-bridge.fork.eval']).toBeUndefined();
   });
+
+  it('register adds exactly the fork queries and unregister removes them', async () => {
+    const { registerForkHandlers, unregisterForkHandlers } = await import('./handlers.js');
+    const forkKeys = () =>
+      Object.keys((globalThis as any).CONFIG.queries).filter(k =>
+        k.startsWith('foundry-mcp-bridge.fork.')
+      );
+    registerForkHandlers();
+    expect(forkKeys()).toEqual([
+      'foundry-mcp-bridge.fork.eval',
+      'foundry-mcp-bridge.fork.applyRecharge',
+    ]);
+    unregisterForkHandlers();
+    expect(forkKeys()).toEqual([]);
+  });
 });

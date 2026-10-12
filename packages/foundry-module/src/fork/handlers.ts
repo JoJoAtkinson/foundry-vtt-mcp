@@ -10,12 +10,12 @@
  * Everything here runs inside a logged-in GM's browser session.
  */
 
-const MODULE_ID = 'foundry-mcp-bridge';
-const FORK_PREFIX = `${MODULE_ID}.fork`;
-
 import { rechargeUpdate } from './recharge.js';
 import { serialize } from './serialize.js';
 import { TOGGLE_KEYS, withToggleDefault } from './toggle-condition.js';
+
+const MODULE_ID = 'foundry-mcp-bridge';
+const FORK_PREFIX = `${MODULE_ID}.fork`;
 
 declare const game: any;
 declare const CONFIG: any;
@@ -219,14 +219,19 @@ async function handleApplyRecharge(
   };
 }
 
+/** The fork's CONFIG.queries entries, keyed `${FORK_PREFIX}.<name>`; register and unregister both walk this. */
+const FORK_QUERIES = { eval: handleEval, applyRecharge: handleApplyRecharge } as const;
+
 export function registerForkHandlers(): void {
-  CONFIG.queries[`${FORK_PREFIX}.eval`] = handleEval;
-  CONFIG.queries[`${FORK_PREFIX}.applyRecharge`] = handleApplyRecharge;
+  for (const [name, handler] of Object.entries(FORK_QUERIES)) {
+    CONFIG.queries[`${FORK_PREFIX}.${name}`] = handler;
+  }
   guardBridgeQueries();
   console.log(`[${MODULE_ID}] fork handlers registered`);
 }
 
 export function unregisterForkHandlers(): void {
-  delete CONFIG.queries[`${FORK_PREFIX}.eval`];
-  delete CONFIG.queries[`${FORK_PREFIX}.applyRecharge`];
+  for (const name of Object.keys(FORK_QUERIES)) {
+    delete CONFIG.queries[`${FORK_PREFIX}.${name}`];
+  }
 }
