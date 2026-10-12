@@ -11,6 +11,7 @@ import {
   EVAL_TRANSPORT_MARGIN_MS,
 } from './pentaryn-call.js';
 import { DEFAULT_TIMEOUT_MS } from './pentaryn-read.js';
+import { APPLY_RECHARGE_QUERY } from '../recharge.js';
 import {
   registerForkHandlers,
   unregisterForkHandlers,
@@ -327,6 +328,23 @@ describe('one eval query name and timeout, shared with pentaryn-call (M2, ext-5)
     try {
       registerForkHandlers();
       expect(typeof (globalThis as any).CONFIG.queries[EVAL_QUERY]).toBe('function');
+    } finally {
+      unregisterForkHandlers();
+      delete (globalThis as any).CONFIG;
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('the server query names are exactly the keys registerForkHandlers() adds (ext-5)', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    (globalThis as any).CONFIG = { queries: {} };
+    try {
+      registerForkHandlers();
+      const queries = (globalThis as any).CONFIG.queries;
+      expect(Object.keys(queries).sort()).toEqual([APPLY_RECHARGE_QUERY, EVAL_QUERY].sort());
+      for (const key of Object.keys(queries)) expect(typeof queries[key]).toBe('function');
+      unregisterForkHandlers();
+      expect(Object.keys(queries)).toEqual([]);
     } finally {
       unregisterForkHandlers();
       delete (globalThis as any).CONFIG;
