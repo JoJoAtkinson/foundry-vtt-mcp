@@ -343,6 +343,24 @@ describe('upstream write tools reach the action log (mcp-fork-1)', () => {
     expect(logLines(dir)[0]).toMatchObject({ tool: 'dnd5e-create-npc', ok: false, error: 'boom' });
   });
 
+  it('an upstream {success:false} refusal is logged ok:false with its error (fork-edge-2)', () => {
+    const reg = new ForkRegistry(logger);
+    reg.auditUpstream(
+      'switch-scene',
+      { scene: 'Nowhere' },
+      { ok: true, result: { success: false, error: 'Scene not found' }, ms: 2 }
+    );
+    reg.auditUpstream(
+      'assign-actor-ownership',
+      { actorIdentifier: 'a' },
+      { ok: true, result: { success: true }, ms: 1 }
+    );
+    const lines = logLines(dir);
+    expect(lines[0]).toMatchObject({ tool: 'switch-scene', ok: false, error: 'Scene not found' });
+    expect(lines[1]).toMatchObject({ tool: 'assign-actor-ownership', ok: true });
+    expect(lines[1].error).toBeUndefined();
+  });
+
   it('the glob list covers the upstream write tools and none of the reads', () => {
     const writes = [
       'assign-actor-ownership',
