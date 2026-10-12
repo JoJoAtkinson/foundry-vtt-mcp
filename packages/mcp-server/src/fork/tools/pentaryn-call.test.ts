@@ -305,6 +305,28 @@ describe('pentaryn-call template', () => {
     });
   });
 
+  it('fork-edge-8: a typed array, DataView or bare ArrayBuffer in a result caps like an array', async () => {
+    const bytes = new Uint8Array(1000).fill(7);
+    unregisterForkHandlers();
+    installGame(
+      withRow(fakeNamespace(), { path: 'blob', params: [], gm: false, writes: false, doc: 'bytes' }, () => ({
+        typed: bytes,
+        buffer: bytes.buffer,
+        view: new DataView(bytes.buffer, 2, 3),
+        floats: new Float32Array([0.5, NaN]),
+      }))
+    );
+    const { result } = (await run({ ns: 'fake', path: 'blob' })) as any;
+    for (const key of ['typed', 'buffer']) {
+      expect(Array.isArray(result[key])).toBe(true);
+      expect(result[key]).toHaveLength(201);
+      expect(result[key][0]).toBe(7);
+      expect(result[key][200]).toBe('[+800 more]');
+    }
+    expect(result.view).toEqual([7, 7, 7]);
+    expect(result.floats).toEqual([0.5, 'NaN']);
+  });
+
   it("a write row's own fail() is returned as a value with its code copied up", async () => {
     const env = await run({ mode: 'write', ns: 'fake', path: 'refuse' });
     expect(env).toEqual({

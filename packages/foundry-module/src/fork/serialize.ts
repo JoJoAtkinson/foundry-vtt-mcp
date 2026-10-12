@@ -27,7 +27,8 @@ export const SERIALIZE_LIMITS = Object.freeze({ depth: 4, array: 200, collection
  *    (toObject()) only at depth 0.
  *  - Map, Set, Foundry Collection (anything with entries() and a numeric size) → array
  *    of its values, at most SERIALIZE_LIMITS.collection, then "[+N more]".
- *  - arrays → at most SERIALIZE_LIMITS.array items, then "[+N more]".
+ *  - arrays → at most SERIALIZE_LIMITS.array items, then "[+N more]". A typed array counts
+ *    as an array; a DataView or bare ArrayBuffer as an array of its bytes (fork-edge-8).
  *  - other objects → own enumerable keys, dropping `_`-keys except `_id`; a throwing
  *    getter → "[unserializable]".
  */
@@ -76,14 +77,16 @@ export function serialize(value: any, depth = 0, seen = new WeakSet()): any {
     return out;
   }
 
-  if (Array.isArray(value)) {
-    if (value.length > SERIALIZE_LIMITS.array) {
-      return [
-        ...value.slice(0, SERIALIZE_LIMITS.array).map(v => serialize(v, depth + 1, seen)),
-        `[+${value.length - SERIALIZE_LIMITS.array} more]`,
-      ];
+  const items: ArrayLike<any> | undefined = Array.isArray(value) ? value : viewItems(value);
+  if (items) {
+    // slice() via Array.prototype gives a plain array: a typed array's own map would coerce results.
+    const head = Array.prototype.slice
+      .call(items, 0, SERIALIZE_LIMITS.array)
+      .map(v => serialize(v, depth + 1, seen));
+    if (items.length > SERIALIZE_LIMITS.array) {
+      return [...head, `[+${items.length - SERIALIZE_LIMITS.array} more]`];
     }
-    return value.map(v => serialize(v, depth + 1, seen));
+    return head;
   }
 
   const out: Record<string, any> = {};
@@ -96,6 +99,15 @@ export function serialize(value: any, depth = 0, seen = new WeakSet()): any {
     }
   }
   return out;
+}
+
+/** A typed array as is; a DataView or bare ArrayBuffer as its bytes; anything else undefined. */
+function viewItems(value: any): ArrayLike<unknown> | undefined {
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (value instanceof DataView) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return ArrayBuffer.isView(value) ? (value as unknown as ArrayLike<unknown>) : undefined;
 }
 
 function safeToObject(doc: any): any {

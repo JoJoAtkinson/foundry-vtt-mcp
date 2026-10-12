@@ -115,6 +115,11 @@ const plain = (v, depth, stack) => {
     return out;
   };
   if (Array.isArray(v)) return list(v, v.length);
+  if (ArrayBuffer.isView(v) || v instanceof ArrayBuffer) {
+    const items = v instanceof ArrayBuffer ? new Uint8Array(v)
+      : v instanceof DataView ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : v;
+    return list(items, items.length);
+  }
   if (v instanceof Map || v instanceof Set || (typeof v.entries === 'function' && typeof v.size === 'number')) {
     return list(v.values(), v.size);
   }
