@@ -8,7 +8,7 @@
  * lines; registry.test.ts pins the upstream list both ways.
  */
 
-import { globToRegExp } from './registry.js';
+import { globToRegExp } from './glob.js';
 
 export const UPSTREAM_WRITE_GLOBS: readonly string[] = Object.freeze([
   'create-*',
@@ -29,10 +29,8 @@ export const UPSTREAM_WRITE_GLOBS: readonly string[] = Object.freeze([
   'cancel-map-job',
 ]);
 
-// Built on first use: registry.ts imports this file, and this file imports registry.ts.
-let matchers: RegExp[] | null = null;
+const matchers = UPSTREAM_WRITE_GLOBS.map(globToRegExp);
 
 export function isUpstreamWrite(name: string): boolean {
-  matchers ??= UPSTREAM_WRITE_GLOBS.map(globToRegExp);
   return matchers.some(re => re.test(name));
 }
