@@ -65,6 +65,27 @@ describe('toggle-token-condition with active omitted', () => {
     expect(res).toEqual({ isActive: false });
   });
 
+  it('fork-edge-4: a name that matches only via the resolved status id applies, never a no-op removal', async () => {
+    // 'Prone' resolves to status id 'prone', but upstream's removal checks the raw string
+    // ('Prone') against statuses/name/label — none match this effect, so active:false would
+    // remove nothing. Default to active:true, which upstream can carry out.
+    const q = install([{ statuses: new Set(['prone']), name: 'Liegend' }]);
+    const res = await q['foundry-mcp-bridge.toggle-token-condition']({
+      tokenId: 'T1',
+      conditionId: 'Prone',
+    });
+    expect(res).toEqual({ isActive: true });
+  });
+
+  it('matches by label, case-insensitively, as upstream removal does', async () => {
+    const q = install([{ statuses: new Set(), label: 'Prone' }]);
+    const res = await q['foundry-mcp-bridge.toggle-token-condition']({
+      tokenId: 'T1',
+      conditionId: 'prone',
+    });
+    expect(res).toEqual({ isActive: false });
+  });
+
   it('an explicit active is passed through untouched', async () => {
     const q = install([{ statuses: new Set(['prone']) }]);
     const res = await q['foundry-mcp-bridge.toggle-token-condition']({
