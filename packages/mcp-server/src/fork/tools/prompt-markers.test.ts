@@ -635,6 +635,12 @@ describe('replace', () => {
     }
   });
 
+  it('a non-string specFile fails as specFile: Expected string', () => {
+    expect(() =>
+      parseArgs({ action: 'replace', call: 'pm-1', specFile: 3, replacements: [none('p1')] })
+    ).toThrow(/^BAD_SPEC: .*specFile: Expected string/);
+  });
+
   it('specFile: reads the replacements from a JSON file; the call keeps dryRun and wins on call/party', async () => {
     const files: Record<string, string> = {
       '/s/arr.json': JSON.stringify([none('p1')]),

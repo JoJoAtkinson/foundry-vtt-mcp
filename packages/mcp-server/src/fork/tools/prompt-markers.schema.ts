@@ -1,7 +1,8 @@
 /**
  * prompt-markers argument schemas (mcp-fork-14): the zod copy of what the pentaryn-prompts
  * module accepts, per action, and parseArgs(). The module re-checks every field; these
- * exist so a bad call fails before the round trip, with a `BAD_SPEC:` line per issue.
+ * exist so a bad call fails before the round trip, with one `BAD_SPEC:` error, issues joined
+ * with "; ".
  * prompt-markers.ts re-exports parseArgs and ReplacementT.
  */
 
@@ -312,7 +313,10 @@ const ReplaceArgs = z
     action: z.literal('replace'),
     call: Id.optional(),
     replacements: z.array(Replacement).min(1).max(100),
-    /** Set when the replacements came from a spec file (the handler reads it before parsing). */
+    /**
+     * Never a string here: withSpecFile (prompt-markers.ts) has already expanded and removed it.
+     * Kept so a non-string specFile fails as `specFile: Expected string`, not as an unrecognized key.
+     */
     specFile: z.string().optional(),
     dryRun: z.boolean().optional(),
     force: z.boolean().optional(),
@@ -383,7 +387,7 @@ const SCHEMAS: Record<Action, z.ZodTypeAny> = {
   show: ShowArgs,
 };
 
-/** zod error → one `BAD_SPEC:` line per issue, paths in the caller's own terms. */
+/** zod error → one `BAD_SPEC:` error, issues joined with "; ", paths in the caller's own terms. */
 function badSpec(err: z.ZodError): Error {
   const lines = err.issues.map(i => {
     const path = i.path.length ? i.path.join('.') : '(args)';
