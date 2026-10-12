@@ -11,6 +11,7 @@ Fixes from the 2026-10-11 live checks. Deploy both halves (server and bridge mod
 
 - `pentaryn-write` lines carry the ids of the documents the module returned when its result has no `ids` of its own (`{uuid}`, `{_id}`, a Foundry-shaped `{id}`, `documents`, arrays; depth ≤ 4, ≤ 50 ids; never throws). `dropbin.restoreResult` logs the created item and its actor instead of `ids: []`. A dry run or a refusal logs `ids: []`
 - An upstream write tool that refuses as a value (`{success: false, error}` — `switch-scene`, `assign-actor-ownership`/`remove-actor-ownership`, `wfrp4e-*`, map jobs) is logged `ok: false` with that `error`, not `ok: true` (fork-edge-2)
+- Every upstream tool the server serves must be classified as a write (logged) or a read (`UPSTREAM_READ_TOOLS` beside the write globs in `src/fork/upstream-writes.ts`); `fork/upstream-writes.test.ts` builds the real upstream tool classes and fails naming any tool an upstream rebase adds unclassified. No runtime change (ext-6)
 - An `eval-js` call rejected for its own arguments: the action-log line in `mcp-<YYYY-MM>.jsonl` now has `phase: "args"` and the same one-line error as the eval line (`script: …; timeoutMs: …`), not the multi-line validation dump. The thrown error is unchanged. Any fork handler can attach `phase` / `logError` to what it throws
 
 ---
