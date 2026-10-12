@@ -21,6 +21,9 @@ import type { Logger } from '../logger.js';
 
 export type LogStream = 'actions' | 'eval';
 
+/** File-name stem per stream; a Record so a new LogStream must name its file. */
+const STREAM_FILE: Readonly<Record<LogStream, string>> = { actions: 'mcp', eval: 'eval' };
+
 export class ActionLog {
   private readonly dir: string | null;
   private readonly logger: Logger;
@@ -57,7 +60,7 @@ export class ActionLog {
   pathFor(stream: LogStream, now: Date = new Date(), dir = this.dir): string | null {
     if (!dir) return null;
     const month = now.toISOString().slice(0, 7); // YYYY-MM
-    return join(dir, `${stream === 'eval' ? 'eval' : 'mcp'}-${month}.jsonl`);
+    return join(dir, `${STREAM_FILE[stream]}-${month}.jsonl`);
   }
 
   /** Append one JSON line to a stream. Never throws. */

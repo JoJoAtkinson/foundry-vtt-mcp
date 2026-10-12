@@ -53,6 +53,13 @@ describe('ActionLog', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
+  it('pathFor maps each stream to its file', () => {
+    const log = new ActionLog(makeLogger(), tmp());
+    const d = new Date('2026-10-15T00:00:00Z');
+    expect(log.pathFor('actions', d)).toMatch(/[\\/]mcp-2026-10\.jsonl$/);
+    expect(log.pathFor('eval', d)).toMatch(/[\\/]eval-2026-10\.jsonl$/);
+  });
+
   it('a failing append never throws and warns once per stream', () => {
     const dir = tmp();
     const month = new Date().toISOString().slice(0, 7);
