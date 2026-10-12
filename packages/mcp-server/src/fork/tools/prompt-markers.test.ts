@@ -207,6 +207,39 @@ describe('helpers', () => {
     ).toMatch(/^TIMEOUT: /);
   });
 
+  it('friendlyError sets `code` on every coded error, message bytes unchanged (rob-7)', () => {
+    const coded = friendlyError(
+      new Error('Query pentaryn-prompts.replace failed: TEXT_CHANGED: p3 edited'),
+      QUERIES.replace
+    ) as Error & { code?: string };
+    expect(coded.message).toBe('TEXT_CHANGED: p3 edited');
+    expect(coded.code).toBe('TEXT_CHANGED');
+
+    const missing = friendlyError(
+      new Error(
+        'Query pentaryn-prompts.gather failed: No handler found for query: pentaryn-prompts.gather'
+      ),
+      QUERIES.gather
+    ) as Error & { code?: string };
+    expect(missing.code).toBe('MODULE_MISSING');
+    expect(missing.message).toMatch(/^MODULE_MISSING: pentaryn-prompts is not active/);
+
+    const timeout = friendlyError(
+      new Error(
+        'Query pentaryn-prompts.gather failed: Query timeout: pentaryn-prompts.gather (60000 ms)'
+      ),
+      QUERIES.gather
+    ) as Error & { code?: string };
+    expect(timeout.code).toBe('TIMEOUT');
+    expect(timeout.message).toMatch(/^TIMEOUT: pentaryn-prompts\.gather did not answer in time \(/);
+
+    const plain = friendlyError(new Error('socket hang up'), QUERIES.gather) as Error & {
+      code?: string;
+    };
+    expect(plain.message).toBe('socket hang up');
+    expect(plain.code).toBeUndefined();
+  });
+
   it('specKey ignores nothing but dryRun', () => {
     const r = [{ id: 'p1', call: 'pm-1', with: { kind: 'none', reason: 'x' } }];
     expect(specKey('pm-1', r)).toBe(specKey('pm-1', JSON.parse(JSON.stringify(r))));
