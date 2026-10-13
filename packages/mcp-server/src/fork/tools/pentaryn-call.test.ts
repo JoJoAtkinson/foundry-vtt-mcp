@@ -645,3 +645,30 @@ describe('transport failures throw coded errors', () => {
     ).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 });
+
+describe('M3: one zod issue formatter (zodIssueText)', () => {
+  it('formats issues as `path: message` joined with "; ", "(args)" for the root', async () => {
+    const { zodIssueText } = await import('./pentaryn-call.js');
+    const { z } = await import('zod');
+    const res = z
+      .object({ a: z.string(), b: z.object({ c: z.number() }) })
+      .strict()
+      .safeParse({ a: 1, b: { c: 'x' }, extra: true });
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(zodIssueText(res.error)).toBe(
+      'a: Expected string, received number; b.c: Expected number, received string; ' +
+        "(args): Unrecognized key(s) in object: 'extra'"
+    );
+  });
+
+  it('pentaryn-read, eval-js and prompt-markers keep no copy of their own', async () => {
+    const { readFileSync } = await import('fs');
+    const { fileURLToPath } = await import('url');
+    for (const f of ['pentaryn-read.ts', 'eval-js.ts', 'prompt-markers.schema.ts']) {
+      const src = readFileSync(fileURLToPath(new URL(`./${f}`, import.meta.url)), 'utf8');
+      expect(src, f).not.toMatch(/\.issues\s*\.map/);
+      expect(src, f).toMatch(/zodIssueText\(/);
+    }
+  });
+});

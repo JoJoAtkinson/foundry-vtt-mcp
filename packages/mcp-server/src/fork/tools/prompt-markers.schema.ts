@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { zodIssueText } from './pentaryn-call.js';
 
 const Id = z.string().min(1);
 const PromptId = z.string().regex(/^p\d+$/, 'expected a prompt id like "p3"');
@@ -388,11 +389,7 @@ const SCHEMAS: Record<Action, z.ZodTypeAny> = {
 
 /** zod error → one `BAD_SPEC:` error, issues joined with "; ", paths in the caller's own terms. */
 function badSpec(err: z.ZodError): Error {
-  const lines = err.issues.map(i => {
-    const path = i.path.length ? i.path.join('.') : '(args)';
-    return `${path}: ${i.message}`;
-  });
-  return new Error(`BAD_SPEC: ${lines.join('; ')}`);
+  return new Error(`BAD_SPEC: ${zodIssueText(err)}`);
 }
 
 export function parseArgs(raw: unknown): { action: Action; args: any } {

@@ -45,6 +45,7 @@
  * reason: 'result could not be serialized'}`, never a thrown INTERNAL (rob-1).
  */
 
+import type { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 
 export const EVAL_QUERY = 'foundry-mcp-bridge.fork.eval';
@@ -294,6 +295,15 @@ export function buildCallScript(call: PentarynCall): string {
   };
   // A function replacer: `$&`-style patterns in the JSON must not be interpreted.
   return TEMPLATE.replace('__CALL__', () => JSON.stringify(literal));
+}
+
+/**
+ * zod issues → one line, `path: message; …` (`(args)` for an issue on the whole object). The
+ * one formatter behind pentaryn-read/write's BAD_ARGS, eval-js's argument rejection and
+ * prompt-markers' BAD_SPEC (M3).
+ */
+export function zodIssueText(err: z.ZodError): string {
+  return err.issues.map(i => `${i.path.join('.') || '(args)'}: ${i.message}`).join('; ');
 }
 
 /** A coded Error (`CODE: message`, `code` set), the shape every pentaryn error has. */

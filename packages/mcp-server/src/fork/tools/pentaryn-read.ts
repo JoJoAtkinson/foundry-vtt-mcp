@@ -14,6 +14,7 @@ import {
   EVAL_DEFAULT_TIMEOUT_MS,
   codedError,
   runPentarynCall,
+  zodIssueText,
   type PentarynEnvelope,
 } from './pentaryn-call.js';
 
@@ -35,8 +36,7 @@ export const CallArgs = z
 
 /** zod issues → one `BAD_ARGS: path: message; …` error, thrown before any query. */
 export function badArgs(err: z.ZodError): Error {
-  const lines = err.issues.map(i => `${i.path.join('.') || '(args)'}: ${i.message}`);
-  return codedError('BAD_ARGS', lines.join('; '));
+  return codedError('BAD_ARGS', zodIssueText(err));
 }
 
 /** The JSON-schema properties both tools share. */

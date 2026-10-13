@@ -22,7 +22,12 @@ import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { ForkCallMeta, ForkRegistry } from '../registry.js';
 import type { ActionLog } from '../action-log.js';
-import { EVAL_DEFAULT_TIMEOUT_MS, EVAL_QUERY, EVAL_TRANSPORT_MARGIN_MS } from './pentaryn-call.js';
+import {
+  EVAL_DEFAULT_TIMEOUT_MS,
+  EVAL_QUERY,
+  EVAL_TRANSPORT_MARGIN_MS,
+  zodIssueText,
+} from './pentaryn-call.js';
 
 const ArgsSchema = z.object({
   script: z.string().min(1),
@@ -87,9 +92,7 @@ export function registerEvalJs(
         // A rejected call is still a call: the promotion review reads this log, and a
         // missing purpose or an out-of-range timeout is worth seeing there.
         const raw = (rawArgs ?? {}) as { purpose?: unknown; script?: unknown };
-        const error = parsed.error.issues
-          .map(i => `${i.path.join('.') || '(args)'}: ${i.message}`)
-          .join('; ');
+        const error = zodIssueText(parsed.error);
         actionLog.append('eval', {
           ts: new Date().toISOString(),
           purpose: typeof raw.purpose === 'string' ? raw.purpose : null,
