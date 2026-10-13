@@ -257,6 +257,76 @@ describe('pentaryn-call template', () => {
     });
   });
 
+  describe('rob-1: a write that landed is ok:true even when its result will not serialize', () => {
+    const landed = (value: unknown) => {
+      unregisterForkHandlers();
+      installGame(
+        withRow(
+          fakeNamespace(),
+          { path: 'stamp', params: [], gm: true, writes: true, doc: 'returns odd values' },
+          async () => {
+            calls.push(['stamp']);
+            return value;
+          }
+        )
+      );
+      return run({ mode: 'write', ns: 'fake', path: 'stamp' });
+    };
+
+    it("an invalid Date serializes as '[unserializable]', not INTERNAL 'Invalid time value'", async () => {
+      const env = await landed({ ok: true, at: new Date(NaN), on: new Date(0) });
+      expect(calls).toEqual([['stamp']]);
+      expect(env).toEqual({
+        ok: true,
+        ns: 'fake',
+        path: 'stamp',
+        result: { ok: true, at: '[unserializable]', on: '1970-01-01T00:00:00.000Z' },
+      });
+    });
+
+    it('a result that still throws while serializing is ok:true with a reason', async () => {
+      const hostile = new Proxy(
+        {},
+        {
+          ownKeys() {
+            throw new Error('revoked');
+          },
+        }
+      );
+      const env = await landed({ ok: true, doc: hostile });
+      expect(calls).toEqual([['stamp']]);
+      expect(env).toEqual({
+        ok: true,
+        ns: 'fake',
+        path: 'stamp',
+        result: '[unserializable]',
+        reason: 'result could not be serialized',
+      });
+    });
+  });
+
+  it('fork-edge-8: a typed array, DataView or bare ArrayBuffer in a result caps like an array', async () => {
+    const bytes = new Uint8Array(1000).fill(7);
+    unregisterForkHandlers();
+    installGame(
+      withRow(fakeNamespace(), { path: 'blob', params: [], gm: false, writes: false, doc: 'bytes' }, () => ({
+        typed: bytes,
+        buffer: bytes.buffer,
+        view: new DataView(bytes.buffer, 2, 3),
+        floats: new Float32Array([0.5, NaN]),
+      }))
+    );
+    const { result } = (await run({ ns: 'fake', path: 'blob' })) as any;
+    for (const key of ['typed', 'buffer']) {
+      expect(Array.isArray(result[key])).toBe(true);
+      expect(result[key]).toHaveLength(201);
+      expect(result[key][0]).toBe(7);
+      expect(result[key][200]).toBe('[+800 more]');
+    }
+    expect(result.view).toEqual([7, 7, 7]);
+    expect(result.floats).toEqual([0.5, 'NaN']);
+  });
+
   it("a write row's own fail() is returned as a value with its code copied up", async () => {
     const env = await run({ mode: 'write', ns: 'fake', path: 'refuse' });
     expect(env).toEqual({
@@ -311,6 +381,34 @@ describe('pentaryn-call template', () => {
     expect(env.writes).toMatchObject({ 'store.list': false, 'store.set': true, inspect: false });
   });
 
+  it('rob-5: a null/non-object describe() row is skipped — unknown path is NOT_FOUND, not INTERNAL', async () => {
+    unregisterForkHandlers();
+    const ns = fakeNamespace();
+    const describe0 = ns.describe;
+    ns.describe = () => {
+      const d = describe0();
+      return { ...d, methods: [null, ...d.methods, undefined, 'store.list'] };
+    };
+    installGame(ns);
+    const env = await run({ ns: 'fake', path: 'nope' });
+    expect(env).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect(env.paths).toEqual([
+      'store.list',
+      'store.set',
+      'search',
+      'deep',
+      'actor',
+      'boom',
+      'refuse',
+      'describe',
+      'inspect',
+    ]);
+    expect(await run({ ns: 'fake', path: 'store.list', ref: 'Esren' })).toMatchObject({
+      ok: true,
+      result: { rows: ['Esren'] },
+    });
+  });
+
   it('selftest is listed when the namespace has one', async () => {
     unregisterForkHandlers();
     const ns = fakeNamespace();
@@ -362,6 +460,23 @@ describe('pentaryn-call template', () => {
       code: 'NOT_FOUND',
       paths: ['describe', 'inspect'],
       namespaces: ['fake'],
+    });
+  });
+
+  it('fork-edge-6: root describe refuses a ref or opts; root inspect still takes both', async () => {
+    const refused = {
+      ok: false,
+      ns: '*',
+      path: 'describe',
+      code: 'BAD_ARGS',
+      reason: 'game.pentaryn.describe takes no ref or opts',
+    };
+    expect(await run({ ns: '*', path: 'describe', ref: 'Esren' })).toEqual(refused);
+    expect(await run({ ns: '*', path: 'describe', opts: { depth: 2 } })).toEqual(refused);
+    expect(await run({ ns: '*', path: 'describe', opts: {} })).toMatchObject({ ok: true });
+    expect(await run({ ns: '*', path: 'inspect', ref: 'Esren', opts: { depth: 2 } })).toMatchObject({
+      ok: true,
+      result: { fake: { ref: 'Esren' } },
     });
   });
 
@@ -528,5 +643,145 @@ describe('transport failures throw coded errors', () => {
     await expect(
       runPentarynCall(failing({ ok: true, phase: 'complete', result: 1 }), call, 1000)
     ).rejects.toMatchObject({ code: 'INTERNAL' });
+  });
+});
+
+describe('M3: one zod issue formatter (zodIssueText)', () => {
+  it('formats issues as `path: message` joined with "; ", "(args)" for the root', async () => {
+    const { zodIssueText } = await import('./pentaryn-call.js');
+    const { z } = await import('zod');
+    const res = z
+      .object({ a: z.string(), b: z.object({ c: z.number() }) })
+      .strict()
+      .safeParse({ a: 1, b: { c: 'x' }, extra: true });
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(zodIssueText(res.error)).toBe(
+      'a: Expected string, received number; b.c: Expected number, received string; ' +
+        "(args): Unrecognized key(s) in object: 'extra'"
+    );
+  });
+
+  it('pentaryn-read, eval-js and prompt-markers keep no copy of their own', async () => {
+    const { readFileSync } = await import('fs');
+    const { fileURLToPath } = await import('url');
+    const read = (f: string) =>
+      readFileSync(fileURLToPath(new URL(`./${f}`, import.meta.url)), 'utf8');
+    for (const f of ['eval-js.ts', 'prompt-markers.schema.ts']) {
+      expect(read(f), f).not.toMatch(/\.issues\s*\.map/);
+      expect(read(f), f).toMatch(/zodIssueText\(/);
+    }
+    // pentaryn-read/write format through badArgs(), which lives beside zodIssueText (M4)
+    for (const f of ['pentaryn-read.ts', 'pentaryn-write.ts']) {
+      expect(read(f), f).not.toMatch(/\.issues\s*\.map/);
+      expect(read(f), f).toMatch(/badArgs\(/);
+    }
+    expect(read('pentaryn-call.ts')).toMatch(/codedError\('BAD_ARGS', zodIssueText\(err\)\)/);
+  });
+});
+
+describe('M4: the shared call symbols live in pentaryn-call', () => {
+  it('pentaryn-call exports CALL_PROPERTIES, CallArgs, DEFAULT_TIMEOUT_MS and badArgs', async () => {
+    const mod: Record<string, unknown> = await import('./pentaryn-call.js');
+    expect(mod.DEFAULT_TIMEOUT_MS).toBe(10_000);
+    expect(Object.keys(mod.CALL_PROPERTIES as object)).toEqual([
+      'ns',
+      'path',
+      'ref',
+      'opts',
+      'timeoutMs',
+    ]);
+    const CallArgs = mod.CallArgs as import('zod').ZodTypeAny;
+    expect(CallArgs.safeParse({ ns: 'cursors', path: 'status' }).success).toBe(true);
+    const bad = CallArgs.safeParse({ ns: 'a.b', path: 'x', extra: 1 });
+    expect(bad.success).toBe(false);
+    if (bad.success) return;
+    const err = (mod.badArgs as (e: unknown) => Error)(bad.error);
+    expect(err).toMatchObject({ code: 'BAD_ARGS' });
+    expect(err.message).toBe(
+      'BAD_ARGS: ns: one namespace, no dots ("*" for the root); ' +
+        "(args): Unrecognized key(s) in object: 'extra'"
+    );
+  });
+
+  it('pentaryn-read and pentaryn-write import them from pentaryn-call, not from each other', async () => {
+    const { readFileSync } = await import('fs');
+    const { fileURLToPath } = await import('url');
+    for (const f of ['pentaryn-read.ts', 'pentaryn-write.ts']) {
+      const src = readFileSync(fileURLToPath(new URL(`./${f}`, import.meta.url)), 'utf8');
+      expect(src, f).not.toMatch(/from '\.\/pentaryn-(read|write)\.js'/);
+      expect(src, f).not.toMatch(
+        /export (const|function) (CALL_PROPERTIES|CallArgs|DEFAULT_TIMEOUT_MS|badArgs)\b/
+      );
+    }
+  });
+});
+
+describe('M10: one connector error unwrapper (unwrapQueryError)', () => {
+  it('strips the `Query X failed: ` wrapper and classifies timeout / missing / disconnected / other', async () => {
+    const { unwrapQueryError } = await import('./pentaryn-call.js');
+    expect(
+      unwrapQueryError(
+        new Error(
+          'Query pentaryn-prompts.gather failed: Query timeout: pentaryn-prompts.gather (60000 ms)'
+        )
+      )
+    ).toEqual({ msg: 'Query timeout: pentaryn-prompts.gather (60000 ms)', kind: 'timeout' });
+    expect(
+      unwrapQueryError(new Error('Query timeout: foundry-mcp-bridge.fork.eval (3000 ms)'))
+    ).toEqual({
+      msg: 'Query timeout: foundry-mcp-bridge.fork.eval (3000 ms)',
+      kind: 'timeout',
+    });
+    expect(
+      unwrapQueryError(
+        new Error(
+          'Query foundry-mcp-bridge.fork.eval failed: No handler found for query: foundry-mcp-bridge.fork.eval'
+        )
+      )
+    ).toEqual({ msg: 'No handler found for query: foundry-mcp-bridge.fork.eval', kind: 'missing' });
+    expect(
+      unwrapQueryError(
+        new Error('Foundry VTT module not connected. Please ensure Foundry is running')
+      )
+    ).toEqual({
+      msg: 'Foundry VTT module not connected. Please ensure Foundry is running',
+      kind: 'disconnected',
+    });
+    expect(
+      unwrapQueryError(new Error('Query pentaryn-prompts.replace failed: TEXT_CHANGED: p3 edited'))
+    ).toEqual({
+      msg: 'TEXT_CHANGED: p3 edited',
+      kind: 'other',
+    });
+    expect(unwrapQueryError('socket hang up')).toEqual({ msg: 'socket hang up', kind: 'other' });
+  });
+});
+
+describe('ext-9: the zod args and the JSON inputSchema list the same keys', () => {
+  // The two are written by hand side by side; a key added to one and not the other is
+  // either refused by zod though advertised, or accepted but invisible to the client.
+  const keys = (o: object) => Object.keys(o).sort();
+  const required = (shape: Record<string, import('zod').ZodTypeAny>) =>
+    Object.keys(shape)
+      .filter(k => !shape[k].isOptional())
+      .sort();
+
+  it('pentaryn-read: CallArgs.shape matches inputSchema.properties and required', async () => {
+    const { CallArgs } = await import('./pentaryn-call.js');
+    const { PENTARYN_READ_DEFINITION: def } = await import('./pentaryn-read.js');
+    expect(keys(CallArgs.shape)).toEqual(keys(def.inputSchema.properties));
+    expect(required(CallArgs.shape)).toEqual([...def.inputSchema.required].sort());
+  });
+
+  it('pentaryn-write: WriteArgs.shape (CallArgs plus dryRun) matches inputSchema', async () => {
+    const { CallArgs } = await import('./pentaryn-call.js');
+    const mod: Record<string, any> = await import('./pentaryn-write.js');
+    const WriteArgs = mod.WriteArgs as import('zod').AnyZodObject;
+    expect(WriteArgs, 'pentaryn-write exports WriteArgs').toBeDefined();
+    const def = mod.PENTARYN_WRITE_DEFINITION;
+    expect(keys(WriteArgs.shape)).toEqual(keys(def.inputSchema.properties));
+    expect(keys(WriteArgs.shape)).toEqual(keys({ ...CallArgs.shape, dryRun: true }));
+    expect(required(WriteArgs.shape)).toEqual([...def.inputSchema.required].sort());
   });
 });

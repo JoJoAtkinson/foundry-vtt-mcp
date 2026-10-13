@@ -5,7 +5,6 @@ import { join } from 'path';
 import {
   createPromptMarkersHandler,
   friendlyError,
-  parseArgs,
   specKey,
   toImage,
   withSpecFile,
@@ -14,6 +13,9 @@ import {
   PROMPT_MARKERS_DEFINITION,
   registerPromptMarkers,
 } from './prompt-markers.js';
+import { parseArgs, SIZES, FEATURE_TYPES } from './prompt-markers.schema.js';
+import { DnD5eNpcTools } from '../../tools/dnd5e/npc.js';
+import { DnD5eAddFeatureTool } from '../../tools/dnd5e/add-feature.js';
 import { toMcpPayload } from '../content.js';
 import { ForkRegistry } from '../registry.js';
 
@@ -24,6 +26,36 @@ const logger: any = {
   error: vi.fn(),
   child: () => logger,
 };
+
+describe('fork module surface (M7)', () => {
+  it('prompt-markers.ts does not re-export the schema helpers (import them from prompt-markers.schema.js)', async () => {
+    const mod: Record<string, unknown> = await import('./prompt-markers.js');
+    expect('parseArgs' in mod).toBe(false);
+  });
+
+  it('fork/index.ts exports only createForkRegistry (ForkRegistry comes from registry.js)', async () => {
+    const mod: Record<string, unknown> = await import('../index.js');
+    expect(Object.keys(mod).sort()).toEqual(['createForkRegistry']);
+  });
+});
+
+describe('upstream enum drift (ext-8)', () => {
+  const deps = { foundryClient: { query: vi.fn() } as any, logger };
+  const schemaOf = (defs: any[], name: string) =>
+    defs.find(d => d.name === name)?.inputSchema?.properties;
+
+  it("SIZES matches dnd5e-create-npc's size enum", () => {
+    const props = schemaOf(new DnD5eNpcTools(deps).getToolDefinitions(), 'dnd5e-create-npc');
+    expect(SIZES).toBeDefined();
+    expect([...SIZES]).toEqual(props.size.enum);
+  });
+
+  it("FEATURE_TYPES matches dnd5e-add-feature's featureType enum", () => {
+    const props = schemaOf(new DnD5eAddFeatureTool(deps).getToolDefinitions(), 'dnd5e-add-feature');
+    expect(FEATURE_TYPES).toBeDefined();
+    expect([...FEATURE_TYPES]).toEqual(props.featureType.enum);
+  });
+});
 
 // 1x1 transparent webp, base64
 const WEBP = 'UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
@@ -205,6 +237,39 @@ describe('helpers', () => {
         QUERIES.gather
       ).message
     ).toMatch(/^TIMEOUT: /);
+  });
+
+  it('friendlyError sets `code` on every coded error, message bytes unchanged (rob-7)', () => {
+    const coded = friendlyError(
+      new Error('Query pentaryn-prompts.replace failed: TEXT_CHANGED: p3 edited'),
+      QUERIES.replace
+    ) as Error & { code?: string };
+    expect(coded.message).toBe('TEXT_CHANGED: p3 edited');
+    expect(coded.code).toBe('TEXT_CHANGED');
+
+    const missing = friendlyError(
+      new Error(
+        'Query pentaryn-prompts.gather failed: No handler found for query: pentaryn-prompts.gather'
+      ),
+      QUERIES.gather
+    ) as Error & { code?: string };
+    expect(missing.code).toBe('MODULE_MISSING');
+    expect(missing.message).toMatch(/^MODULE_MISSING: pentaryn-prompts is not active/);
+
+    const timeout = friendlyError(
+      new Error(
+        'Query pentaryn-prompts.gather failed: Query timeout: pentaryn-prompts.gather (60000 ms)'
+      ),
+      QUERIES.gather
+    ) as Error & { code?: string };
+    expect(timeout.code).toBe('TIMEOUT');
+    expect(timeout.message).toMatch(/^TIMEOUT: pentaryn-prompts\.gather did not answer in time \(/);
+
+    const plain = friendlyError(new Error('socket hang up'), QUERIES.gather) as Error & {
+      code?: string;
+    };
+    expect(plain.message).toBe('socket hang up');
+    expect(plain.code).toBeUndefined();
   });
 
   it('specKey ignores nothing but dryRun', () => {

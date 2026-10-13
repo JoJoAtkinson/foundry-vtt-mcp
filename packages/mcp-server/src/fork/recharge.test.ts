@@ -72,6 +72,44 @@ describe('applyRecharge through the typed fork query (mcp-fork-10)', () => {
     );
   });
 
+  it('fork-ac-3: a timeout is an unknown outcome, not "not applied"', async () => {
+    // The query timing out says nothing about whether the GM tab applied the row; before
+    // fork-ac-3 it was reported as `not applied (Query … failed: Query timeout: …)`.
+    const UNKNOWN =
+      'unknown (the GM tab did not answer in 10 s; it may have applied — re-read the feature before retrying)';
+    const throwing = (msg: string) => ({
+      query: async () => {
+        throw new Error(msg);
+      },
+    });
+    // as FoundryClient.query wraps the connector's timeout
+    expect(
+      await applyRecharge(
+        throwing(
+          'Query foundry-mcp-bridge.fork.applyRecharge failed: Query timeout: foundry-mcp-bridge.fork.applyRecharge (10000 ms)'
+        ) as any,
+        REQ,
+        logger
+      )
+    ).toBe(UNKNOWN);
+    // the connector's own message, unwrapped
+    expect(
+      await applyRecharge(
+        throwing('Query timeout: foundry-mcp-bridge.fork.applyRecharge (10000 ms)') as any,
+        REQ,
+        logger
+      )
+    ).toBe(UNKNOWN);
+    // anything else is still a failure
+    expect(
+      await applyRecharge(
+        throwing('Query foundry-mcp-bridge.fork.applyRecharge failed: Not connected') as any,
+        REQ,
+        logger
+      )
+    ).toBe('not applied (Query foundry-mcp-bridge.fork.applyRecharge failed: Not connected)');
+  });
+
   it('writes no log line of its own and opens no second ActionLog (was: its own recharge line)', async () => {
     const dir = tmp();
     process.env.PENTARYN_MCP_LOG_DIR = dir;

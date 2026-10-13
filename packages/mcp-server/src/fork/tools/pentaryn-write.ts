@@ -9,8 +9,13 @@ import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { ForkRegistry } from '../registry.js';
-import { runPentarynCall } from './pentaryn-call.js';
-import { CALL_PROPERTIES, CallArgs, DEFAULT_TIMEOUT_MS, badArgs } from './pentaryn-read.js';
+import {
+  CALL_PROPERTIES,
+  CallArgs,
+  DEFAULT_TIMEOUT_MS,
+  badArgs,
+  runPentarynCall,
+} from './pentaryn-call.js';
 
 const WriteArgs = CallArgs.extend({ dryRun: z.boolean().optional() }).strict();
 
@@ -77,8 +82,7 @@ export function registerPentarynWrite(
         ids,
       };
     },
-    // Logged in full: the args are the record of what was asked (sanitizeForLog caps them).
-    { write: true, logArgs: (a: any) => a }
+    { write: true } // logged in full: the args are the record of what was asked (sanitizeForLog caps them)
   );
 }
 
@@ -142,4 +146,4 @@ export function collectIds(result: unknown): string[] {
   return out;
 }
 
-export { DEFINITION as PENTARYN_WRITE_DEFINITION };
+export { DEFINITION as PENTARYN_WRITE_DEFINITION, WriteArgs };

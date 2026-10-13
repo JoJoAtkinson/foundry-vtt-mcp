@@ -1,6 +1,7 @@
 /**
  * Recharge n–6 on a dnd5e feature (mcp-fork-10): one use, regained on a d6 roll of n+,
- * consumed by every activity of the feature. dnd5e-add-feature's `recharge` argument
+ * consumed by every activity of the feature (an activity's itemUses target naming another
+ * item is kept; fork-edge-5). dnd5e-add-feature's `recharge` argument
  * applies it through the `foundry-mcp-bridge.fork.applyRecharge` query (handlers.ts).
  * Pure: builds the update row, writes nothing.
  */
@@ -17,7 +18,8 @@ export function rechargeUpdate(item: any, n: number): Record<string, unknown> {
   };
   for (const a of item.system?.activities ?? []) {
     const keep = (a.consumption?.targets ?? [])
-      .filter((t: any) => t.type !== 'itemUses')
+      // Only the feature's own itemUses target ('' or its id) is replaced; one naming another item stays.
+      .filter((t: any) => !(t.type === 'itemUses' && (!t.target || t.target === item.id)))
       .map((t: any) => t.toObject?.() ?? t);
     row[`system.activities.${a.id}.consumption.targets`] = [
       ...keep,

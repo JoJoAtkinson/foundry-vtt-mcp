@@ -38,6 +38,18 @@ describe('serialize', () => {
     expect(out[200]).toBe('[+1 more]');
   });
 
+  it('fork-edge-8: a typed array, DataView or bare ArrayBuffer caps like an array', () => {
+    const big = serialize(new Uint8Array(1000));
+    expect(Array.isArray(big)).toBe(true);
+    expect(big).toHaveLength(201);
+    expect(big[200]).toBe('[+800 more]');
+    expect(serialize(new Float64Array([1.5, 2]))).toEqual([1.5, 2]);
+    expect(serialize(new BigInt64Array([3n]))).toEqual(['3']);
+    expect(serialize(new Uint8Array([1, 2, 3]).buffer)).toEqual([1, 2, 3]);
+    expect(serialize(new DataView(new Uint8Array([9, 8, 7, 6]).buffer, 1, 2))).toEqual([8, 7]);
+    expect(serialize({ bytes: new ArrayBuffer(300) }).bytes[200]).toBe('[+100 more]');
+  });
+
   it('a top-level Document carries its source; a nested one only its identity', () => {
     const doc = { documentName: 'Actor', _id: 'A', name: 'N', toObject: () => ({ k: 1 }) };
     expect(serialize(doc)).toEqual({ _document: 'Actor', _id: 'A', name: 'N', source: { k: 1 } });

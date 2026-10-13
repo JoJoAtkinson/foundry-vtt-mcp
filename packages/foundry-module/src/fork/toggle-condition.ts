@@ -7,15 +7,20 @@
  * queries.ts/data-access.ts, the fork's bridge-query wrapper (handlers.ts) fills `active`
  * in before upstream sees the call: true when the token's actor has no effect for the
  * condition, false when it has one. The match is the one upstream uses to remove a
- * condition (status id, then name, then label, case-insensitive), plus the resolved
- * CONFIG.statusEffects id when the caller named the condition.
+ * condition, and only that: the raw `conditionId` in the effect's statuses, or the effect's
+ * name/label equal to it case-insensitively. It deliberately does not match the resolved
+ * CONFIG.statusEffects id (fork-edge-4): upstream's removal never does, so a name that only
+ * matches through it would default to a removal that removes nothing; it applies instead.
+ *
+ * Only an omitted `active` (absent or undefined) is filled in (rob-4). Any other value — a
+ * string, null, a number — passes through unchanged, so upstream's own "active must be a
+ * boolean" refuses it rather than the wrapper silently replacing it with a toggle.
  *
  * Best effort, never throws: a token or actor that cannot be found gets `active: true`, so
  * upstream raises its own "Token … not found" error instead of the boolean complaint.
  */
 
 declare const game: any;
-declare const CONFIG: any;
 
 export const TOGGLE_KEYS = new Set([
   'foundry-mcp-bridge.toggle-token-condition',
@@ -23,19 +28,15 @@ export const TOGGLE_KEYS = new Set([
 ]);
 
 export function withToggleDefault<T extends Record<string, any>>(data: T): T {
-  if (!data || typeof data !== 'object' || typeof data.active === 'boolean') return data;
+  if (!data || typeof data !== 'object' || data.active !== undefined) return data;
   let active = true;
   try {
     const wanted = String(data.conditionId ?? '').toLowerCase();
-    const condition = (CONFIG?.statusEffects ?? []).find(
-      (c: any) => c?.id === data.conditionId || c?.name?.toLowerCase?.() === wanted
-    );
-    const ids = new Set([data.conditionId, condition?.id].filter(Boolean));
     const actor = game?.scenes?.current?.tokens?.get?.(data.tokenId)?.actor;
     const effects: any[] = actor?.effects?.contents ?? [];
     const has = effects.some(
       (e: any) =>
-        [...ids].some(id => e?.statuses?.has?.(id)) ||
+        (data.conditionId != null && e?.statuses?.has?.(data.conditionId)) ||
         (wanted !== '' &&
           (e?.name?.toLowerCase?.() === wanted || e?.label?.toLowerCase?.() === wanted))
     );

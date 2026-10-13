@@ -25,7 +25,8 @@
  *   - any other param                  ← `opts[<its name>]` (e.g. rules.search(query, opts):
  *     `{opts: {query: "grapple", limit: 3}}`)
  * Opts keys left over on a row without an opts param, or a `ref` on a row without one, are
- * refused with BAD_ARGS. A param that needs a live Document cannot be passed as JSON, so a
+ * refused with BAD_ARGS. The root describe ({ns: "*", path: "describe"}) takes neither: a `ref`
+ * or non-empty `opts` there is BAD_ARGS too (fork-edge-6); the root inspect takes both. A param that needs a live Document cannot be passed as JSON, so a
  * call that would fill one is refused with BAD_ARGS ('needs a live Document — eval-js only')
  * before it runs. A param needs one when it is a Document (a `kind` the kit resolves, a
  * `type` made only of Document class names such as "Actor" or "JournalEntry|Item", or a
@@ -39,11 +40,22 @@
  * The result travels back as JSON text, made plain in the browser (Documents → {_document,
  * _id, name, uuid}; cycles, Maps/Sets/Collections, depth ≤ 12, arrays ≤ 200), because the
  * eval serializer's depth-4 cap would cut a describe() (methods → params is depth 5).
+ * An invalid Date is '[unserializable]'. A write that landed is always `ok: true`: if its
+ * result still cannot be serialized, the envelope is `{ok: true, result: '[unserializable]',
+ * reason: 'result could not be serialized'}`, never a thrown INTERNAL (rob-1).
  */
 
+import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 
 export const EVAL_QUERY = 'foundry-mcp-bridge.fork.eval';
+/** The in-browser eval timeout when a caller gives none (eval-js, pentaryn-read/write). */
+export const EVAL_DEFAULT_TIMEOUT_MS = 10_000;
+/**
+ * Added to the in-browser timeout for the transport, which must outlive it: otherwise a
+ * 30 s script is cut at the connector's default 10 s and reported as a transport failure.
+ */
+export const EVAL_TRANSPORT_MARGIN_MS = 2_000;
 
 export type CallMode = 'read' | 'write';
 
@@ -96,7 +108,7 @@ const plain = (v, depth, stack) => {
   if (depth > LIMITS.depth) return '[max depth]';
   if (++nodes > LIMITS.nodes) return '[truncated]';
   if (stack.includes(v)) return '[circular]';
-  if (v instanceof Date) return v.toISOString();
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '[unserializable]' : v.toISOString();
   if (v instanceof Error) return { error: v.message, ...(v.code ? { code: v.code } : {}) };
   if (v.documentName && v._id !== undefined) {
     return { _document: v.documentName, _id: v._id, name: v.name ?? null, ...(v.uuid ? { uuid: v.uuid } : {}) };
@@ -111,6 +123,11 @@ const plain = (v, depth, stack) => {
     return out;
   };
   if (Array.isArray(v)) return list(v, v.length);
+  if (ArrayBuffer.isView(v) || v instanceof ArrayBuffer) {
+    const items = v instanceof ArrayBuffer ? new Uint8Array(v)
+      : v instanceof DataView ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : v;
+    return list(items, items.length);
+  }
   if (v instanceof Map || v instanceof Set || (typeof v.entries === 'function' && typeof v.size === 'number')) {
     return list(v.values(), v.size);
   }
@@ -152,6 +169,9 @@ if (call.ns === '*') {
       { paths: have, namespaces: nsList() });
   }
   if (call.mode !== 'read') return fail('BAD_ARGS', 'game.pentaryn.' + call.path + ' is a read; use pentaryn-read');
+  if (call.path === 'describe' && (call.ref !== undefined || Object.keys(call.opts ?? {}).length > 0)) {
+    return fail('BAD_ARGS', 'game.pentaryn.describe takes no ref or opts');
+  }
   try {
     const result = await (call.path === 'describe' ? root.describe() : root.inspect(call.ref, call.opts ?? {}));
     return out({ ok: true, ns: '*', path: call.path, result });
@@ -167,7 +187,7 @@ if (!api || typeof api !== 'object' || typeof api.contract !== 'string' || typeo
 }
 let d;
 try { d = api.describe(); } catch (e) { return fail(codeOf(e), call.ns + '.describe() failed: ' + reasonOf(e)); }
-const rows = Array.isArray(d?.methods) ? d.methods : [];
+const rows = (Array.isArray(d?.methods) ? d.methods : []).filter(m => m && typeof m === 'object');
 let row = rows.find(m => m?.path === call.path);
 if (!row && Object.hasOwn(KIT, call.path) && typeof api[call.path] === 'function') {
   row = { path: call.path, params: KIT[call.path], writes: false };
@@ -253,7 +273,14 @@ if (writes && result && typeof result === 'object' && result.ok === false) {
   return out({ ok: false, ns: call.ns, path: call.path, code: typeof result.code === 'string' ? result.code : 'REFUSED',
     reason: result.reason ?? result.error ?? null, result });
 }
-return out({ ok: true, ns: call.ns, path: call.path, result });
+if (!writes) return out({ ok: true, ns: call.ns, path: call.path, result });
+// The write landed: a result that will not serialize must not turn it into a thrown INTERNAL.
+try {
+  return out({ ok: true, ns: call.ns, path: call.path, result });
+} catch {
+  return JSON.stringify({ ok: true, ns: call.ns, path: call.path, result: '[unserializable]',
+    reason: 'result could not be serialized' });
+}
 `;
 
 /** The eval script for one call: the fixed template with the call as a JSON literal. */
@@ -270,10 +297,87 @@ export function buildCallScript(call: PentarynCall): string {
   return TEMPLATE.replace('__CALL__', () => JSON.stringify(literal));
 }
 
+/**
+ * zod issues → one line, `path: message; …` (`(args)` for an issue on the whole object). The
+ * one formatter behind pentaryn-read/write's BAD_ARGS, eval-js's argument rejection and
+ * prompt-markers' BAD_SPEC (M3).
+ */
+export function zodIssueText(err: z.ZodError): string {
+  return err.issues.map(i => `${i.path.join('.') || '(args)'}: ${i.message}`).join('; ');
+}
+
 /** A coded Error (`CODE: message`, `code` set), the shape every pentaryn error has. */
 export function codedError(code: string, message: string): Error {
   return Object.assign(new Error(`${code}: ${message}`), { code });
 }
+
+/**
+ * A connector error, unwrapped: the `Query X failed: ` wrapper stripped, and the transport
+ * failures named — `timeout` (the GM tab did not answer in time), `missing` (no handler for
+ * the query: the module is not active there), `disconnected` (no bridge at all), `other`
+ * (anything the GM tab threw, often `CODE: detail`). The one reading behind runPentarynCall
+ * and prompt-markers' friendlyError (M10).
+ */
+export function unwrapQueryError(err: unknown): {
+  msg: string;
+  kind: 'timeout' | 'missing' | 'disconnected' | 'other';
+} {
+  const msg = String((err as any)?.message ?? err).replace(/^Query \S+ failed: /, '');
+  if (/^Query timeout: /.test(msg)) return { msg, kind: 'timeout' };
+  if (/No handler found for query: /.test(msg)) return { msg, kind: 'missing' };
+  if (/not connected/i.test(msg)) return { msg, kind: 'disconnected' };
+  return { msg, kind: 'other' };
+}
+
+/** pentaryn-read/write's timeout when a call gives none. */
+export const DEFAULT_TIMEOUT_MS = EVAL_DEFAULT_TIMEOUT_MS;
+
+/** The arguments both D14 tools share (pentaryn-write extends them with dryRun). */
+export const CallArgs = z
+  .object({
+    ns: z
+      .string()
+      .min(1)
+      .refine(s => !s.includes('.'), 'one namespace, no dots ("*" for the root)'),
+    path: z.string().min(1),
+    ref: z.string().min(1).optional(),
+    opts: z.record(z.unknown()).optional(),
+    timeoutMs: z.number().int().min(1000).max(60000).optional(),
+  })
+  .strict();
+
+/** zod issues → one `BAD_ARGS: path: message; …` error, thrown before any query. */
+export function badArgs(err: z.ZodError): Error {
+  return codedError('BAD_ARGS', zodIssueText(err));
+}
+
+/** The JSON-schema properties both tools share. */
+export const CALL_PROPERTIES = {
+  ns: {
+    type: 'string',
+    description:
+      'A game.pentaryn namespace (e.g. "cursors", "importer"), or "*" for the root (path "describe" or "inspect").',
+  },
+  path: {
+    type: 'string',
+    description:
+      'A method path from describe().methods[].path (e.g. "status", "store.list"), or describe / inspect / selftest.',
+  },
+  ref: {
+    type: 'string',
+    description:
+      "The row's `ref` argument, resolved by the module: Actor/Token uuid, 16-char id or exact name — never a substring.",
+  },
+  opts: {
+    type: 'object',
+    description:
+      "The row's options (sceneId, base, as, …); a positional parameter other than ref is given here by its name.",
+  },
+  timeoutMs: {
+    type: 'number',
+    description: 'Abort after this many ms (1000-60000, default 10000).',
+  },
+} as const;
 
 /**
  * Run one call through fork.eval. Module refusals come back as an `{ok: false, code}`
@@ -293,18 +397,17 @@ export async function runPentarynCall(
     r = await foundryClient.query(
       EVAL_QUERY,
       { script: buildCallScript(call), timeoutMs },
-      // the transport must outlive the in-browser timeout (as eval-js does)
-      { timeoutMs: timeoutMs + 2000 }
+      { timeoutMs: timeoutMs + EVAL_TRANSPORT_MARGIN_MS }
     );
-  } catch (err: any) {
-    const msg = String(err?.message ?? err).replace(/^Query \S+ failed: /, '');
-    if (/not connected|No handler found for query: foundry-mcp-bridge\.fork\.eval/i.test(msg)) {
+  } catch (err) {
+    const { msg, kind } = unwrapQueryError(err);
+    if (kind === 'missing' || kind === 'disconnected') {
       throw codedError('MODULE_MISSING', `foundry-mcp-bridge is not connected (${msg})`);
     }
-    if (/^Query timeout: /.test(msg)) {
+    if (kind === 'timeout') {
       throw codedError(
         'TIMEOUT',
-        `${where} did not answer in ${timeoutMs + 2000} ms; it may still be running — re-read before retrying`
+        `${where} did not answer in ${timeoutMs + EVAL_TRANSPORT_MARGIN_MS} ms; it may still be running — re-read before retrying`
       );
     }
     // A coded refusal from the GM tab (NOT_GM from requireGM, …) keeps its code.

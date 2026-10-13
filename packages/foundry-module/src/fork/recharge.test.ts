@@ -50,6 +50,34 @@ describe('rechargeUpdate', () => {
     expect(rechargeUpdate(fixtureItem(), 5)).toEqual(EXPECTED_ROW);
   });
 
+  it('keeps itemUses targets that name another item; replaces only its own (fork-edge-5)', () => {
+    const item = {
+      id: 'I1',
+      system: {
+        activities: [
+          {
+            id: 'a1',
+            consumption: {
+              targets: [
+                { type: 'itemUses', target: '', value: '1' },
+                { type: 'itemUses', target: 'I1', value: '1' },
+                { type: 'itemUses', target: 'Q7', value: '1' },
+                { type: 'material', target: 'x', value: '2' },
+                { type: 'itemUses', target: 'Arrows', value: '3' },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    expect(rechargeUpdate(item, 5)['system.activities.a1.consumption.targets']).toEqual([
+      { type: 'itemUses', target: 'Q7', value: '1' },
+      { type: 'material', target: 'x', value: '2' },
+      { type: 'itemUses', target: 'Arrows', value: '3' },
+      { type: 'itemUses', target: '', value: '1' },
+    ]);
+  });
+
   it('an item without activities only gets uses', () => {
     expect(rechargeUpdate({ id: 'I2', system: {} }, 6)).toEqual({
       _id: 'I2',

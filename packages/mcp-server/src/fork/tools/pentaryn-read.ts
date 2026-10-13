@@ -5,62 +5,18 @@
  * code?, ms, client?}` line per call in mcp-<YYYY-MM>.jsonl — no arguments, no result.
  */
 
-import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { ActionLog } from '../action-log.js';
 import type { ForkCallMeta, ForkRegistry } from '../registry.js';
-import { codedError, runPentarynCall, type PentarynEnvelope } from './pentaryn-call.js';
-
-export const DEFAULT_TIMEOUT_MS = 10_000;
-
-/** The arguments both D14 tools share. */
-export const CallArgs = z
-  .object({
-    ns: z
-      .string()
-      .min(1)
-      .refine(s => !s.includes('.'), 'one namespace, no dots ("*" for the root)'),
-    path: z.string().min(1),
-    ref: z.string().min(1).optional(),
-    opts: z.record(z.unknown()).optional(),
-    timeoutMs: z.number().int().min(1000).max(60000).optional(),
-  })
-  .strict();
-
-/** zod issues → one `BAD_ARGS: path: message; …` error, thrown before any query. */
-export function badArgs(err: z.ZodError): Error {
-  const lines = err.issues.map(i => `${i.path.join('.') || '(args)'}: ${i.message}`);
-  return codedError('BAD_ARGS', lines.join('; '));
-}
-
-/** The JSON-schema properties both tools share. */
-export const CALL_PROPERTIES = {
-  ns: {
-    type: 'string',
-    description:
-      'A game.pentaryn namespace (e.g. "cursors", "importer"), or "*" for the root (path "describe" or "inspect").',
-  },
-  path: {
-    type: 'string',
-    description:
-      'A method path from describe().methods[].path (e.g. "status", "store.list"), or describe / inspect / selftest.',
-  },
-  ref: {
-    type: 'string',
-    description:
-      "The row's `ref` argument, resolved by the module: Actor/Token uuid, 16-char id or exact name — never a substring.",
-  },
-  opts: {
-    type: 'object',
-    description:
-      "The row's options (sceneId, base, as, …); a positional parameter other than ref is given here by its name.",
-  },
-  timeoutMs: {
-    type: 'number',
-    description: 'Abort after this many ms (1000-60000, default 10000).',
-  },
-} as const;
+import {
+  CALL_PROPERTIES,
+  CallArgs,
+  DEFAULT_TIMEOUT_MS,
+  badArgs,
+  runPentarynCall,
+  type PentarynEnvelope,
+} from './pentaryn-call.js';
 
 const DEFINITION = {
   name: 'pentaryn-read',

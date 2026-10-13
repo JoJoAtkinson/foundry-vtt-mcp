@@ -259,3 +259,14 @@ describe('collectIds (action-log ids from a module result)', () => {
     expect(collectIds('str')).toEqual([]);
   });
 });
+
+describe('pentaryn-write registration (M8)', () => {
+  it('registers as a write with no logArgs: the registry logs the raw args by default', () => {
+    const reg = new ForkRegistry(logger);
+    const register = vi.spyOn(reg, 'register');
+    registerPentarynWrite(reg, evalClient(), logger);
+    expect(register).toHaveBeenCalledTimes(1);
+    // Before M8 the opts carried an identity `logArgs: (a) => a`, which changed nothing.
+    expect(register.mock.calls[0][2]).toEqual({ write: true });
+  });
+});

@@ -261,20 +261,22 @@ export class ForkRegistry {
     if (!this.actionLog.enabled) return;
     try {
       // A handler that reports failure as a value ({ok:false, phase?, code?}) is a
-      // failure in the log too, not ok:true.
+      // failure in the log too, not ok:true. Upstream tools refuse with
+      // {success:false, error} (switch-scene, ownership, map jobs): same (fork-edge-2).
       const r = entry.result && typeof entry.result === 'object' ? entry.result : undefined;
+      const refused = r?.success === false;
       const line = {
         ts: new Date().toISOString(),
         tool: entry.tool,
         action: entry.action ?? undefined,
         args: sanitizeForLog(entry.args),
-        ok: entry.ok && r?.ok !== false,
+        ok: entry.ok && r?.ok !== false && !refused,
         phase: typeof r?.phase === 'string' ? r.phase : entry.phase,
         code: typeof r?.code === 'string' ? r.code : undefined,
         summary: entry.ok ? entry.result?.summary : undefined,
         ids: entry.ok ? entry.result?.ids : undefined,
         recharge: entry.recharge,
-        error: entry.error,
+        error: entry.error ?? (refused && typeof r?.error === 'string' ? r.error : undefined),
         ms: entry.ms,
         client: entry.client,
       };

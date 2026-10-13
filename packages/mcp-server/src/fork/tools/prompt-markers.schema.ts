@@ -3,18 +3,22 @@
  * module accepts, per action, and parseArgs(). The module re-checks every field; these
  * exist so a bad call fails before the round trip, with one `BAD_SPEC:` error, issues joined
  * with "; ".
- * prompt-markers.ts re-exports parseArgs and ReplacementT.
  */
 
 import { z } from 'zod';
+import { zodIssueText } from './pentaryn-call.js';
 
 const Id = z.string().min(1);
 const PromptId = z.string().regex(/^p\d+$/, 'expected a prompt id like "p3"');
 const EncounterId = z.string().regex(/^E\d+$/, 'expected an encounter id like "E1"');
 
-/** Creature sizes: the npc's `size` and a patch's `size` (one list; it was two). */
-const SIZES = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'] as const;
-const FEATURE_TYPES = [
+/**
+ * Creature sizes: the npc's `size` and a patch's `size` (one list; it was two). Mirrors
+ * dnd5e-create-npc's `size` enum; FEATURE_TYPES mirrors dnd5e-add-feature's `featureType`.
+ * Exported so a test (ext-8) catches drift from those upstream definitions.
+ */
+export const SIZES = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'] as const;
+export const FEATURE_TYPES = [
   'passive',
   'save',
   'attack',
@@ -389,11 +393,7 @@ const SCHEMAS: Record<Action, z.ZodTypeAny> = {
 
 /** zod error → one `BAD_SPEC:` error, issues joined with "; ", paths in the caller's own terms. */
 function badSpec(err: z.ZodError): Error {
-  const lines = err.issues.map(i => {
-    const path = i.path.length ? i.path.join('.') : '(args)';
-    return `${path}: ${i.message}`;
-  });
-  return new Error(`BAD_SPEC: ${lines.join('; ')}`);
+  return new Error(`BAD_SPEC: ${zodIssueText(err)}`);
 }
 
 export function parseArgs(raw: unknown): { action: Action; args: any } {
