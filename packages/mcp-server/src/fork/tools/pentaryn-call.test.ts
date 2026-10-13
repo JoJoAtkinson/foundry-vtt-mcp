@@ -665,10 +665,54 @@ describe('M3: one zod issue formatter (zodIssueText)', () => {
   it('pentaryn-read, eval-js and prompt-markers keep no copy of their own', async () => {
     const { readFileSync } = await import('fs');
     const { fileURLToPath } = await import('url');
-    for (const f of ['pentaryn-read.ts', 'eval-js.ts', 'prompt-markers.schema.ts']) {
+    const read = (f: string) =>
+      readFileSync(fileURLToPath(new URL(`./${f}`, import.meta.url)), 'utf8');
+    for (const f of ['eval-js.ts', 'prompt-markers.schema.ts']) {
+      expect(read(f), f).not.toMatch(/\.issues\s*\.map/);
+      expect(read(f), f).toMatch(/zodIssueText\(/);
+    }
+    // pentaryn-read/write format through badArgs(), which lives beside zodIssueText (M4)
+    for (const f of ['pentaryn-read.ts', 'pentaryn-write.ts']) {
+      expect(read(f), f).not.toMatch(/\.issues\s*\.map/);
+      expect(read(f), f).toMatch(/badArgs\(/);
+    }
+    expect(read('pentaryn-call.ts')).toMatch(/codedError\('BAD_ARGS', zodIssueText\(err\)\)/);
+  });
+});
+
+describe('M4: the shared call symbols live in pentaryn-call', () => {
+  it('pentaryn-call exports CALL_PROPERTIES, CallArgs, DEFAULT_TIMEOUT_MS and badArgs', async () => {
+    const mod: Record<string, unknown> = await import('./pentaryn-call.js');
+    expect(mod.DEFAULT_TIMEOUT_MS).toBe(10_000);
+    expect(Object.keys(mod.CALL_PROPERTIES as object)).toEqual([
+      'ns',
+      'path',
+      'ref',
+      'opts',
+      'timeoutMs',
+    ]);
+    const CallArgs = mod.CallArgs as import('zod').ZodTypeAny;
+    expect(CallArgs.safeParse({ ns: 'cursors', path: 'status' }).success).toBe(true);
+    const bad = CallArgs.safeParse({ ns: 'a.b', path: 'x', extra: 1 });
+    expect(bad.success).toBe(false);
+    if (bad.success) return;
+    const err = (mod.badArgs as (e: unknown) => Error)(bad.error);
+    expect(err).toMatchObject({ code: 'BAD_ARGS' });
+    expect(err.message).toBe(
+      'BAD_ARGS: ns: one namespace, no dots ("*" for the root); ' +
+        "(args): Unrecognized key(s) in object: 'extra'"
+    );
+  });
+
+  it('pentaryn-read and pentaryn-write import them from pentaryn-call, not from each other', async () => {
+    const { readFileSync } = await import('fs');
+    const { fileURLToPath } = await import('url');
+    for (const f of ['pentaryn-read.ts', 'pentaryn-write.ts']) {
       const src = readFileSync(fileURLToPath(new URL(`./${f}`, import.meta.url)), 'utf8');
-      expect(src, f).not.toMatch(/\.issues\s*\.map/);
-      expect(src, f).toMatch(/zodIssueText\(/);
+      expect(src, f).not.toMatch(/from '\.\/pentaryn-(read|write)\.js'/);
+      expect(src, f).not.toMatch(
+        /export (const|function) (CALL_PROPERTIES|CallArgs|DEFAULT_TIMEOUT_MS|badArgs)\b/
+      );
     }
   });
 });

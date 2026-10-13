@@ -6,11 +6,11 @@ import { ZodError } from 'zod';
 import { EVAL_JS_DEFINITION, registerEvalJs } from './eval-js.js';
 import { ActionLog } from '../action-log.js';
 import {
+  DEFAULT_TIMEOUT_MS,
   EVAL_DEFAULT_TIMEOUT_MS,
   EVAL_QUERY,
   EVAL_TRANSPORT_MARGIN_MS,
 } from './pentaryn-call.js';
-import { DEFAULT_TIMEOUT_MS } from './pentaryn-read.js';
 import { APPLY_RECHARGE_QUERY } from '../recharge.js';
 import {
   registerForkHandlers,

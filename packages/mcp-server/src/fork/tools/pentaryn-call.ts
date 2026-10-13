@@ -45,7 +45,7 @@
  * reason: 'result could not be serialized'}`, never a thrown INTERNAL (rob-1).
  */
 
-import type { z } from 'zod';
+import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 
 export const EVAL_QUERY = 'foundry-mcp-bridge.fork.eval';
@@ -310,6 +310,56 @@ export function zodIssueText(err: z.ZodError): string {
 export function codedError(code: string, message: string): Error {
   return Object.assign(new Error(`${code}: ${message}`), { code });
 }
+
+/** pentaryn-read/write's timeout when a call gives none. */
+export const DEFAULT_TIMEOUT_MS = EVAL_DEFAULT_TIMEOUT_MS;
+
+/** The arguments both D14 tools share (pentaryn-write extends them with dryRun). */
+export const CallArgs = z
+  .object({
+    ns: z
+      .string()
+      .min(1)
+      .refine(s => !s.includes('.'), 'one namespace, no dots ("*" for the root)'),
+    path: z.string().min(1),
+    ref: z.string().min(1).optional(),
+    opts: z.record(z.unknown()).optional(),
+    timeoutMs: z.number().int().min(1000).max(60000).optional(),
+  })
+  .strict();
+
+/** zod issues → one `BAD_ARGS: path: message; …` error, thrown before any query. */
+export function badArgs(err: z.ZodError): Error {
+  return codedError('BAD_ARGS', zodIssueText(err));
+}
+
+/** The JSON-schema properties both tools share. */
+export const CALL_PROPERTIES = {
+  ns: {
+    type: 'string',
+    description:
+      'A game.pentaryn namespace (e.g. "cursors", "importer"), or "*" for the root (path "describe" or "inspect").',
+  },
+  path: {
+    type: 'string',
+    description:
+      'A method path from describe().methods[].path (e.g. "status", "store.list"), or describe / inspect / selftest.',
+  },
+  ref: {
+    type: 'string',
+    description:
+      "The row's `ref` argument, resolved by the module: Actor/Token uuid, 16-char id or exact name — never a substring.",
+  },
+  opts: {
+    type: 'object',
+    description:
+      "The row's options (sceneId, base, as, …); a positional parameter other than ref is given here by its name.",
+  },
+  timeoutMs: {
+    type: 'number',
+    description: 'Abort after this many ms (1000-60000, default 10000).',
+  },
+} as const;
 
 /**
  * Run one call through fork.eval. Module refusals come back as an `{ok: false, code}`

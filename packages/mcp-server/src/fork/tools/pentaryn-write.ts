@@ -9,8 +9,13 @@ import { z } from 'zod';
 import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { ForkRegistry } from '../registry.js';
-import { runPentarynCall } from './pentaryn-call.js';
-import { CALL_PROPERTIES, CallArgs, DEFAULT_TIMEOUT_MS, badArgs } from './pentaryn-read.js';
+import {
+  CALL_PROPERTIES,
+  CallArgs,
+  DEFAULT_TIMEOUT_MS,
+  badArgs,
+  runPentarynCall,
+} from './pentaryn-call.js';
 
 const WriteArgs = CallArgs.extend({ dryRun: z.boolean().optional() }).strict();
 
