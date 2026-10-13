@@ -29,8 +29,6 @@ import type { ForkRegistry } from '../registry.js';
 import { codedError } from './pentaryn-call.js';
 import { ACTIONS, parseArgs, type Action, type ReplacementT } from './prompt-markers.schema.js';
 
-export { parseArgs, type ReplacementT };
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------

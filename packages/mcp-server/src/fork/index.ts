@@ -12,8 +12,6 @@ import { registerPentarynRead } from './tools/pentaryn-read.js';
 import { registerPentarynWrite } from './tools/pentaryn-write.js';
 import { registerPromptMarkers } from './tools/prompt-markers.js';
 
-export { ForkRegistry } from './registry.js';
-
 export function createForkRegistry(foundryClient: FoundryClient, logger: Logger): ForkRegistry {
   const registry = new ForkRegistry(logger);
 

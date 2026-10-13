@@ -3,7 +3,6 @@
  * module accepts, per action, and parseArgs(). The module re-checks every field; these
  * exist so a bad call fails before the round trip, with one `BAD_SPEC:` error, issues joined
  * with "; ".
- * prompt-markers.ts re-exports parseArgs and ReplacementT.
  */
 
 import { z } from 'zod';

@@ -5,7 +5,6 @@ import { join } from 'path';
 import {
   createPromptMarkersHandler,
   friendlyError,
-  parseArgs,
   specKey,
   toImage,
   withSpecFile,
@@ -14,6 +13,7 @@ import {
   PROMPT_MARKERS_DEFINITION,
   registerPromptMarkers,
 } from './prompt-markers.js';
+import { parseArgs } from './prompt-markers.schema.js';
 import { toMcpPayload } from '../content.js';
 import { ForkRegistry } from '../registry.js';
 
@@ -24,6 +24,18 @@ const logger: any = {
   error: vi.fn(),
   child: () => logger,
 };
+
+describe('fork module surface (M7)', () => {
+  it('prompt-markers.ts does not re-export the schema helpers (import them from prompt-markers.schema.js)', async () => {
+    const mod: Record<string, unknown> = await import('./prompt-markers.js');
+    expect('parseArgs' in mod).toBe(false);
+  });
+
+  it('fork/index.ts exports only createForkRegistry (ForkRegistry comes from registry.js)', async () => {
+    const mod: Record<string, unknown> = await import('../index.js');
+    expect(Object.keys(mod).sort()).toEqual(['createForkRegistry']);
+  });
+});
 
 // 1x1 transparent webp, base64
 const WEBP = 'UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
