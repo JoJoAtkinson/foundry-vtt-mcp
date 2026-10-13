@@ -12,9 +12,13 @@ const Id = z.string().min(1);
 const PromptId = z.string().regex(/^p\d+$/, 'expected a prompt id like "p3"');
 const EncounterId = z.string().regex(/^E\d+$/, 'expected an encounter id like "E1"');
 
-/** Creature sizes: the npc's `size` and a patch's `size` (one list; it was two). */
-const SIZES = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'] as const;
-const FEATURE_TYPES = [
+/**
+ * Creature sizes: the npc's `size` and a patch's `size` (one list; it was two). Mirrors
+ * dnd5e-create-npc's `size` enum; FEATURE_TYPES mirrors dnd5e-add-feature's `featureType`.
+ * Exported so a test (ext-8) catches drift from those upstream definitions.
+ */
+export const SIZES = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'] as const;
+export const FEATURE_TYPES = [
   'passive',
   'save',
   'attack',

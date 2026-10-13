@@ -13,7 +13,9 @@ import {
   PROMPT_MARKERS_DEFINITION,
   registerPromptMarkers,
 } from './prompt-markers.js';
-import { parseArgs } from './prompt-markers.schema.js';
+import { parseArgs, SIZES, FEATURE_TYPES } from './prompt-markers.schema.js';
+import { DnD5eNpcTools } from '../../tools/dnd5e/npc.js';
+import { DnD5eAddFeatureTool } from '../../tools/dnd5e/add-feature.js';
 import { toMcpPayload } from '../content.js';
 import { ForkRegistry } from '../registry.js';
 
@@ -34,6 +36,24 @@ describe('fork module surface (M7)', () => {
   it('fork/index.ts exports only createForkRegistry (ForkRegistry comes from registry.js)', async () => {
     const mod: Record<string, unknown> = await import('../index.js');
     expect(Object.keys(mod).sort()).toEqual(['createForkRegistry']);
+  });
+});
+
+describe('upstream enum drift (ext-8)', () => {
+  const deps = { foundryClient: { query: vi.fn() } as any, logger };
+  const schemaOf = (defs: any[], name: string) =>
+    defs.find(d => d.name === name)?.inputSchema?.properties;
+
+  it("SIZES matches dnd5e-create-npc's size enum", () => {
+    const props = schemaOf(new DnD5eNpcTools(deps).getToolDefinitions(), 'dnd5e-create-npc');
+    expect(SIZES).toBeDefined();
+    expect([...SIZES]).toEqual(props.size.enum);
+  });
+
+  it("FEATURE_TYPES matches dnd5e-add-feature's featureType enum", () => {
+    const props = schemaOf(new DnD5eAddFeatureTool(deps).getToolDefinitions(), 'dnd5e-add-feature');
+    expect(FEATURE_TYPES).toBeDefined();
+    expect([...FEATURE_TYPES]).toEqual(props.featureType.enum);
   });
 });
 
