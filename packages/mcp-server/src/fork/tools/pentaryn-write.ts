@@ -146,4 +146,4 @@ export function collectIds(result: unknown): string[] {
   return out;
 }
 
-export { DEFINITION as PENTARYN_WRITE_DEFINITION };
+export { DEFINITION as PENTARYN_WRITE_DEFINITION, WriteArgs };

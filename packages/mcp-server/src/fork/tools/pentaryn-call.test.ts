@@ -757,3 +757,31 @@ describe('M10: one connector error unwrapper (unwrapQueryError)', () => {
     expect(unwrapQueryError('socket hang up')).toEqual({ msg: 'socket hang up', kind: 'other' });
   });
 });
+
+describe('ext-9: the zod args and the JSON inputSchema list the same keys', () => {
+  // The two are written by hand side by side; a key added to one and not the other is
+  // either refused by zod though advertised, or accepted but invisible to the client.
+  const keys = (o: object) => Object.keys(o).sort();
+  const required = (shape: Record<string, import('zod').ZodTypeAny>) =>
+    Object.keys(shape)
+      .filter(k => !shape[k].isOptional())
+      .sort();
+
+  it('pentaryn-read: CallArgs.shape matches inputSchema.properties and required', async () => {
+    const { CallArgs } = await import('./pentaryn-call.js');
+    const { PENTARYN_READ_DEFINITION: def } = await import('./pentaryn-read.js');
+    expect(keys(CallArgs.shape)).toEqual(keys(def.inputSchema.properties));
+    expect(required(CallArgs.shape)).toEqual([...def.inputSchema.required].sort());
+  });
+
+  it('pentaryn-write: WriteArgs.shape (CallArgs plus dryRun) matches inputSchema', async () => {
+    const { CallArgs } = await import('./pentaryn-call.js');
+    const mod: Record<string, any> = await import('./pentaryn-write.js');
+    const WriteArgs = mod.WriteArgs as import('zod').AnyZodObject;
+    expect(WriteArgs, 'pentaryn-write exports WriteArgs').toBeDefined();
+    const def = mod.PENTARYN_WRITE_DEFINITION;
+    expect(keys(WriteArgs.shape)).toEqual(keys(def.inputSchema.properties));
+    expect(keys(WriteArgs.shape)).toEqual(keys({ ...CallArgs.shape, dryRun: true }));
+    expect(required(WriteArgs.shape)).toEqual([...def.inputSchema.required].sort());
+  });
+});
