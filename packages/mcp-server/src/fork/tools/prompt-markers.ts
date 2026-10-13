@@ -26,7 +26,7 @@ import type { FoundryClient } from '../../foundry-client.js';
 import type { Logger } from '../../logger.js';
 import type { McpContentBlock } from '../content.js';
 import type { ForkRegistry } from '../registry.js';
-import { codedError } from './pentaryn-call.js';
+import { codedError, unwrapQueryError } from './pentaryn-call.js';
 import { ACTIONS, parseArgs, type Action, type ReplacementT } from './prompt-markers.schema.js';
 
 // ---------------------------------------------------------------------------
@@ -213,16 +213,15 @@ const DEFINITION = {
  * error carries `code` (codedError's shape); an uncoded message has none.
  */
 export function friendlyError(err: unknown, method: string): Error {
-  let msg = String((err as any)?.message ?? err);
-  msg = msg.replace(/^Query \S+ failed: /, '');
-  if (/No handler found for query: pentaryn-prompts\./.test(msg)) {
+  const { msg, kind } = unwrapQueryError(err);
+  if (kind === 'missing') {
     return codedError(
       'MODULE_MISSING',
       `pentaryn-prompts is not active in the GM client (no ${method} handler). ` +
         'Install with `make foundry-prompts-sync`, restart the world on first install, reload the GM tab.'
     );
   }
-  if (/^Query timeout: /.test(msg)) {
+  if (kind === 'timeout') {
     return codedError(
       'TIMEOUT',
       `${method} did not answer in time (${msg}). Gather one scene at a time, ` +

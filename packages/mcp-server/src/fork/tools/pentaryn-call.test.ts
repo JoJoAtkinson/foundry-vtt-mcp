@@ -716,3 +716,44 @@ describe('M4: the shared call symbols live in pentaryn-call', () => {
     }
   });
 });
+
+describe('M10: one connector error unwrapper (unwrapQueryError)', () => {
+  it('strips the `Query X failed: ` wrapper and classifies timeout / missing / disconnected / other', async () => {
+    const { unwrapQueryError } = await import('./pentaryn-call.js');
+    expect(
+      unwrapQueryError(
+        new Error(
+          'Query pentaryn-prompts.gather failed: Query timeout: pentaryn-prompts.gather (60000 ms)'
+        )
+      )
+    ).toEqual({ msg: 'Query timeout: pentaryn-prompts.gather (60000 ms)', kind: 'timeout' });
+    expect(
+      unwrapQueryError(new Error('Query timeout: foundry-mcp-bridge.fork.eval (3000 ms)'))
+    ).toEqual({
+      msg: 'Query timeout: foundry-mcp-bridge.fork.eval (3000 ms)',
+      kind: 'timeout',
+    });
+    expect(
+      unwrapQueryError(
+        new Error(
+          'Query foundry-mcp-bridge.fork.eval failed: No handler found for query: foundry-mcp-bridge.fork.eval'
+        )
+      )
+    ).toEqual({ msg: 'No handler found for query: foundry-mcp-bridge.fork.eval', kind: 'missing' });
+    expect(
+      unwrapQueryError(
+        new Error('Foundry VTT module not connected. Please ensure Foundry is running')
+      )
+    ).toEqual({
+      msg: 'Foundry VTT module not connected. Please ensure Foundry is running',
+      kind: 'disconnected',
+    });
+    expect(
+      unwrapQueryError(new Error('Query pentaryn-prompts.replace failed: TEXT_CHANGED: p3 edited'))
+    ).toEqual({
+      msg: 'TEXT_CHANGED: p3 edited',
+      kind: 'other',
+    });
+    expect(unwrapQueryError('socket hang up')).toEqual({ msg: 'socket hang up', kind: 'other' });
+  });
+});

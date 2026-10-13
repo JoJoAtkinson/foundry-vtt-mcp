@@ -311,6 +311,24 @@ export function codedError(code: string, message: string): Error {
   return Object.assign(new Error(`${code}: ${message}`), { code });
 }
 
+/**
+ * A connector error, unwrapped: the `Query X failed: ` wrapper stripped, and the transport
+ * failures named — `timeout` (the GM tab did not answer in time), `missing` (no handler for
+ * the query: the module is not active there), `disconnected` (no bridge at all), `other`
+ * (anything the GM tab threw, often `CODE: detail`). The one reading behind runPentarynCall
+ * and prompt-markers' friendlyError (M10).
+ */
+export function unwrapQueryError(err: unknown): {
+  msg: string;
+  kind: 'timeout' | 'missing' | 'disconnected' | 'other';
+} {
+  const msg = String((err as any)?.message ?? err).replace(/^Query \S+ failed: /, '');
+  if (/^Query timeout: /.test(msg)) return { msg, kind: 'timeout' };
+  if (/No handler found for query: /.test(msg)) return { msg, kind: 'missing' };
+  if (/not connected/i.test(msg)) return { msg, kind: 'disconnected' };
+  return { msg, kind: 'other' };
+}
+
 /** pentaryn-read/write's timeout when a call gives none. */
 export const DEFAULT_TIMEOUT_MS = EVAL_DEFAULT_TIMEOUT_MS;
 
@@ -381,12 +399,12 @@ export async function runPentarynCall(
       { script: buildCallScript(call), timeoutMs },
       { timeoutMs: timeoutMs + EVAL_TRANSPORT_MARGIN_MS }
     );
-  } catch (err: any) {
-    const msg = String(err?.message ?? err).replace(/^Query \S+ failed: /, '');
-    if (/not connected|No handler found for query: foundry-mcp-bridge\.fork\.eval/i.test(msg)) {
+  } catch (err) {
+    const { msg, kind } = unwrapQueryError(err);
+    if (kind === 'missing' || kind === 'disconnected') {
       throw codedError('MODULE_MISSING', `foundry-mcp-bridge is not connected (${msg})`);
     }
-    if (/^Query timeout: /.test(msg)) {
+    if (kind === 'timeout') {
       throw codedError(
         'TIMEOUT',
         `${where} did not answer in ${timeoutMs + EVAL_TRANSPORT_MARGIN_MS} ms; it may still be running — re-read before retrying`
