@@ -1509,6 +1509,23 @@ async function startBackend(): Promise<void> {
             continue;
           }
 
+          // fork: the headless GM watchdog's liveness probe (pentaryn automation/headless-gm).
+          // A real round trip to the module — the page's getStatus().connected can stay true
+          // on a dead peer. Not a tool call, so it never reaches the action log.
+          if (msg.method === 'foundry_ping') {
+            const started = Date.now();
+            let result: { ok: boolean; ms?: number; error?: string };
+            try {
+              await foundryClient.query('foundry-mcp-bridge.ping', undefined, { timeoutMs: 5000 });
+              result = { ok: true, ms: Date.now() - started };
+            } catch (e) {
+              result = { ok: false, error: e instanceof Error ? e.message : String(e) };
+            }
+            socket.write(JSON.stringify({ id: msg.id, result }) + '\n');
+
+            continue;
+          }
+
           if (msg.method === 'list_tools') {
             socket.write(JSON.stringify({ id: msg.id, result: { tools: allTools } }) + '\n');
 
